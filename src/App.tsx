@@ -79,7 +79,7 @@ function loadRunState(): RunState | null {
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as Partial<RunState>;
-    if (!parsed.puzzleKind || !parsed.par || !parsed.grid) return null;
+ if (!parsed.puzzleKind || !parsed.par || !parsed.grid) return null;
     if (!Array.isArray(parsed.grid) || parsed.grid.length !== SIZE * SIZE) return null;
 
     return {

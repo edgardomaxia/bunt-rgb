@@ -61,11 +61,17 @@ export function scrambleFromSolved(moves: number): Color[] {
 }
 
 export function scrambleMovesFor(kind: PuzzleKind) {
-  if (kind === "solved") return 0;
-  if (kind === "easy") return 1;
-  if (kind === "medium") return 3;
-  if (kind === "practice") return 12;
-  return 12; // random default
+  switch (kind) {
+    case "solved":
+      return 0;
+    case "easy":
+      return 1;
+    case "medium":
+      return 3;
+    case "random":
+    default:
+      return 12;
+  }
 }
 
 export function parForScrambleMoves(scrambleMoves: number) {
