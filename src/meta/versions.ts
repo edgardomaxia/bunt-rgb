@@ -7,7 +7,7 @@ export type VersionMeta = {
 export const VERSION_HISTORY: VersionMeta[] = [
   {
   version: "0.3.0",
-  deployedAtIso: "TBD",
+deployedAtIso: "2026-02-22 15:18:09",
   notes: [
     "Added SHARE modal with WhatsApp, Telegram, X, Email, Copy",
     "Improved modal scroll lock handling",
