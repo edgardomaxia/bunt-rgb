@@ -110,6 +110,11 @@ function sortEntries(a: LeaderboardEntry, b: LeaderboardEntry) {
   if (a.timeMs !== b.timeMs) return a.timeMs - b.timeMs;
   return a.clicks - b.clicks;
 }
+const TILE_COLORS: Record<Color, string> = {
+  red: "#f31b1b",
+  green: "#00d500",
+  blue: "#0033ff",
+};
 
 export default function App() {
   const initialRun = useMemo(() => {
@@ -119,6 +124,7 @@ export default function App() {
 
   const [mode, setMode] = useState<Mode>("normal");
   const [isVersionOpen, setIsVersionOpen] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   const [puzzleKind, setPuzzleKind] = useState<PuzzleKind>(() => initialRun?.puzzleKind ?? "random");
 
@@ -139,7 +145,7 @@ export default function App() {
     typeof window === "undefined" ? emptyLeaderboards() : loadLeaderboards()
   );
 
-  // Timer control refs
+  // Timer refs
   const startTimeRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const runningRef = useRef(false);
@@ -206,14 +212,6 @@ export default function App() {
     maxWidth: 720,
   };
 
-  function closeVersionModal() {
-    setIsVersionOpen(false);
-  }
-
-  function openVersionModal() {
-    setIsVersionOpen(true);
-  }
-
   function stopTimer() {
     runningRef.current = false;
     if (rafIdRef.current != null) {
@@ -258,7 +256,6 @@ export default function App() {
   // Stop timer on solve
   useEffect(() => {
     if (isSolved) stopTimer();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSolved]);
 
   // Save to local leaderboard once per solved run (normal mode only)
@@ -297,14 +294,25 @@ export default function App() {
     });
   }, [mode, isSolved, puzzleKind, efficiencyScore, elapsedMs, clicks, par]);
 
-  // ESC closes version modal
+  // ESC closes modals + lock body scroll when any modal is open
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setIsVersionOpen(false);
+      if (e.key === "Escape") {
+        setIsVersionOpen(false);
+        setIsFeedbackOpen(false);
+      }
     }
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+
+    const anyModalOpen = isVersionOpen || isFeedbackOpen;
+    const prevOverflow = document.body.style.overflow;
+    if (anyModalOpen) document.body.style.overflow = "hidden";
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isVersionOpen, isFeedbackOpen]);
 
   function loadPuzzle(kind: PuzzleKind) {
     const scrambleMoves =
@@ -403,51 +411,68 @@ export default function App() {
         boxSizing: "border-box",
       }}
     >
-      {/* TOP-RIGHT VERSION */}
+      {/* HEADER LEFT: version + status */}
       <div
         style={{
           position: "absolute",
-          top: 25,
-          right: 25,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "flex-end",
-          gap: 2,
-          zIndex: 10,
-          textAlign: "right",
+          top: 22,
+          left: 30,
+          lineHeight: 1.25,
+          zIndex: 5,
+          textAlign: "left",
         }}
       >
-        <span
+        <div
           role="button"
           tabIndex={0}
-          onClick={openVersionModal}
+          onClick={() => setIsVersionOpen(true)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") openVersionModal();
+            if (e.key === "Enter" || e.key === " ") setIsVersionOpen(true);
           }}
           style={{
-            fontSize: 12,
-            opacity: 0.9,
-            textDecoration: "underline",
+            fontSize: 11,
+            opacity: 0.85,
             cursor: "pointer",
+            textDecoration: "underline",
             userSelect: "none",
           }}
-          aria-label={`open-version-history-v${APP_VERSION}`}
           title="Open version history"
         >
           v{APP_VERSION}
-        </span>
-
-        <div style={{ fontSize: 11, opacity: 0.65 }}>{APP_STATUS}</div>
+        </div>
+        <div style={{ fontSize: 10, opacity: 0.55 }}>{APP_STATUS}</div>
       </div>
 
-      {/* VERSION HISTORY MODAL */}
+      {/* HEADER RIGHT: feedback button */}
+      <div style={{ position: "absolute", top: 22, right: 30, zIndex: 5 }}>
+        <button
+          onClick={() => setIsFeedbackOpen(true)}
+          style={{
+            background: "rgba(255,255,255,.08)",
+            border: "1px solid rgba(255,255,255,.15)",
+            color: "#fff",
+            padding: "8px 12px",
+            borderRadius: 12,
+            fontSize: 11,
+            cursor: "pointer",
+            lineHeight: 1.15,
+          }}
+          title="Send anonymous feedback"
+        >
+          Anonymous
+          <br />
+          Feedback
+        </button>
+      </div>
+
+      {/* VERSION MODAL */}
       {isVersionOpen ? (
         <div
-          onClick={closeVersionModal}
+          onClick={() => setIsVersionOpen(false)}
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,.55)",
+            background: "rgba(0,0,0,.6)",
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
@@ -468,17 +493,10 @@ export default function App() {
               padding: 16,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "baseline",
-                gap: 12,
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
               <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Version history</div>
               <button
-                onClick={closeVersionModal}
+                onClick={() => setIsVersionOpen(false)}
                 style={{
                   border: "1px solid rgba(255,255,255,.14)",
                   background: "rgba(255,255,255,.06)",
@@ -529,9 +547,49 @@ export default function App() {
         </div>
       ) : null}
 
+      {/* FEEDBACK MODAL (Tally iframe) */}
+      {isFeedbackOpen ? (
+        <div
+          onClick={() => setIsFeedbackOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.6)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
+            zIndex: 60,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(720px, 95vw)",
+              height: "min(800px, 90vh)",
+              borderRadius: 16,
+              overflow: "hidden",
+              background: "#fff",
+              boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+            }}
+          >
+            <iframe
+              src="https://tally.so/r/xXpB15"
+              width="100%"
+              height="100%"
+              frameBorder={0}
+              style={{ border: "none" }}
+              title="BUNT RGB Anonymous Feedback"
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/* GAME */}
       <div
         style={{
-          ...appShellStyle,
+          width: "100%",
+          maxWidth: 720,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -547,10 +605,14 @@ export default function App() {
 
           <h1 style={{ margin: "70px 0 0 0", fontSize: 66, letterSpacing: 1 }}>BUNT RGB</h1>
 
-          <div style={{ opacity: 0.85, marginTop: 0, fontSize: 18 }}>Make all tiles the same color</div>
+          <div style={{ opacity: 0.85, marginTop: 0, fontSize: 18 }}>
+            Make all tiles the same color
+          </div>
 
           {isPractice ? null : (
-            <div style={{ opacity: 0.6, marginTop: 8, fontSize: 12 }}>(Timer starts on first click)</div>
+            <div style={{ opacity: 0.6, marginTop: 8, fontSize: 12 }}>
+              (Timer starts on first click)
+            </div>
           )}
 
           {isPractice ? null : (
@@ -586,7 +648,9 @@ export default function App() {
             </div>
           )}
 
-          <div style={{ marginTop: 10, opacity: 0.9 }}>{isSolved ? "✅ Solved" : ""}</div>
+          <div style={{ marginTop: 10, opacity: 0.9 }}>
+            {isSolved ? "✅ Solved" : ""}
+          </div>
         </div>
 
         <div
@@ -609,7 +673,7 @@ export default function App() {
               style={{
                 width: 60,
                 height: 60,
-                background: color,
+                background: TILE_COLORS[color],
                 borderRadius: 8,
                 border: "none",
                 padding: 0,
@@ -666,7 +730,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* PRACTICE under RESET */}
             <button
               onClick={() => {
                 setMode("practice");

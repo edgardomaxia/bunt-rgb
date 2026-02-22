@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 512 512">
+  <!-- Generator: Adobe Illustrator 30.2.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 1)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #e52825;
+      }
+
+      .st1 {
+        fill: #03f;
+      }
+
+      .st2 {
+        fill: #00d500;
+      }
+    </style>
+  </defs>
+  <g id="BG">
+    <rect width="512" height="512"/>
+  </g>
+  <g id="Tiles">
+    <rect class="st2" x="108.6" y="109.3" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="7.9" y="109.3" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="108.6" y="7.9" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="7.9" y="7.9" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st2" x="108.6" y="310.4" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="7.9" y="310.4" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st2" x="108.6" y="209" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="7.9" y="209" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st2" x="310" y="109.3" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st2" x="209.3" y="109.3" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="310" y="7.9" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="209.3" y="7.9" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st2" x="310" y="310.4" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st2" x="209.3" y="310.4" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st2" x="310" y="209" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st1" x="209.3" y="209" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="410.7" y="109.3" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="410.7" y="7.9" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="410.7" y="310.4" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="410.7" y="209" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="108.6" y="411.8" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="7.9" y="411.8" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="310" y="411.8" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="209.3" y="411.8" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+    <rect class="st0" x="410.7" y="411.8" width="92.3" height="92.3" rx="12.2" ry="12.2"/>
+  </g>
+</svg>
