@@ -7,7 +7,7 @@ export type VersionMeta = {
 export const VERSION_HISTORY: VersionMeta[] = [
   {
     version: "0.2.0",
-    deployedAtIso: "TBD",
+    deployedAtIso: "2026-02-22T13:40:11Z",
     notes: [
       "Version badge + status",
       "Feedback button (anonymous form link)",
