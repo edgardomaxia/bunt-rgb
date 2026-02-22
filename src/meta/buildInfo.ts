@@ -8,7 +8,7 @@ export const BUILD_INFO: {
   gitMessage: string;
   deploymentId: string;
 } = {
-  "builtAtIso": "2026-02-22T15:37:27.462Z",
+  "builtAtIso": "2026-02-22T16:19:29.422Z",
   "vercelEnv": "local",
   "gitBranch": "local",
   "gitSha": "local",

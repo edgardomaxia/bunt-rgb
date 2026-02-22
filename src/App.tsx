@@ -912,8 +912,7 @@ function clearLeaderboards() {
             display: "grid",
             gridTemplateColumns: `repeat(${SIZE}, 60px)`,
             gap: "6px",
-            filter: isSolved ? "drop-shadow(0 0 10px rgba(255,255,255,.25))" : "none",
-          }}
+filter: "none",          }}
         >
           {grid.map((color, index) => (
             <button
