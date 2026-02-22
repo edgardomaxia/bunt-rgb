@@ -1,4 +1,3 @@
-// scripts/generateBuildInfo.mjs
 import fs from "node:fs";
 import path from "node:path";
 
@@ -15,7 +14,14 @@ const info = {
 
 const content = `// AUTO-GENERATED. DO NOT EDIT.
 // Generated at build time.
-export const BUILD_INFO = ${JSON.stringify(info, null, 2)} as const;
+export const BUILD_INFO: {
+  builtAtIso: string;
+  vercelEnv: string;
+  gitBranch: string;
+  gitSha: string;
+  gitMessage: string;
+  deploymentId: string;
+} = ${JSON.stringify(info, null, 2)};
 `;
 
 fs.writeFileSync(outPath, content, "utf8");
