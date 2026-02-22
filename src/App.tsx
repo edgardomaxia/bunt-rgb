@@ -10,6 +10,7 @@ import {
 } from "./engine/engine";
 import { APP_VERSION, APP_STATUS } from "./meta/appMeta";
 import { VERSION_HISTORY } from "./meta/versions";
+import { BUILD_INFO } from "./meta/buildInfo";
 
 const LEADERBOARD_SIZE = 10;
 const STORAGE_KEY = "bunt_rgb_leaderboards_v1";
@@ -408,37 +409,52 @@ export default function App() {
         boxSizing: "border-box",
       }}
     >
-      {/* HEADER LEFT: version + status */}
-      <div
-        style={{
-          position: "absolute",
-          top: 22,
-          left: 30,
-          lineHeight: 1.25,
-          zIndex: 5,
-          textAlign: "left",
-        }}
-      >
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => setIsVersionOpen(true)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") setIsVersionOpen(true);
-          }}
-          style={{
-            fontSize: 11,
-            opacity: 0.85,
-            cursor: "pointer",
-            textDecoration: "underline",
-            userSelect: "none",
-          }}
-          title="Open version history"
-        >
-          v{APP_VERSION}
-        </div>
-        <div style={{ fontSize: 10, opacity: 0.55 }}>{APP_STATUS}</div>
-      </div>
+ {/* HEADER LEFT: version + status */}
+<div
+  style={{
+    position: "absolute",
+    top: 22,
+    left: 30,
+    lineHeight: 1.25,
+    zIndex: 5,
+    textAlign: "left",
+  }}
+>
+  <div
+    role="button"
+    tabIndex={0}
+    onClick={() => setIsVersionOpen(true)}
+    onKeyDown={(e) => {
+      if (e.key === "Enter" || e.key === " ") setIsVersionOpen(true);
+    }}
+    style={{
+      fontSize: 11,
+      opacity: 0.85,
+      cursor: "pointer",
+      textDecoration: "underline",
+      userSelect: "none",
+    }}
+    title="Open version history"
+  >
+    v{APP_VERSION}
+  </div>
+
+  <div style={{ fontSize: 10, opacity: 0.55 }}>
+    {APP_STATUS}
+  </div>
+
+  {/* 👇 BUILD INFO QUI */}
+  <div style={{ fontSize: 10, opacity: 0.55 }}>
+    {BUILD_INFO.vercelEnv} • {BUILD_INFO.gitBranch} •{" "}
+    {BUILD_INFO.gitSha === "local"
+      ? "local"
+      : BUILD_INFO.gitSha.slice(0, 7)}{" "}
+    •{" "}
+    {BUILD_INFO.builtAtIso === "local"
+      ? ""
+      : new Date(BUILD_INFO.builtAtIso).toLocaleString()}
+  </div>
+</div>
 
       {/* HEADER RIGHT: feedback button */}
       <div style={{ position: "absolute", top: 22, right: 30, zIndex: 5 }}>
