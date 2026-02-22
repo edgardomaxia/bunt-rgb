@@ -490,17 +490,7 @@ function clearLeaderboards() {
     {APP_STATUS}
   </div>
 
-  {/* 👇 BUILD INFO QUI */}
-  <div style={{ fontSize: 10, opacity: 0.55 }}>
-    {BUILD_INFO.vercelEnv} • {BUILD_INFO.gitBranch} •{" "}
-    {BUILD_INFO.gitSha === "local"
-      ? "local"
-      : BUILD_INFO.gitSha.slice(0, 7)}{" "}
-    •{" "}
-    {BUILD_INFO.builtAtIso === "local"
-      ? ""
-      : new Date(BUILD_INFO.builtAtIso).toLocaleString()}
-  </div>
+
 </div>
 
       {/* HEADER RIGHT: feedback button */}
@@ -971,6 +961,25 @@ function clearLeaderboards() {
             </div>
           </div>
         )}
+        <div
+  style={{
+    width: "100%",
+    textAlign: "center",
+    fontSize: 10,
+    opacity: 0.45,
+    marginTop: 0,
+    paddingBottom: 20,
+  }}
+>
+  {BUILD_INFO.vercelEnv} • {BUILD_INFO.gitBranch} •{" "}
+  {BUILD_INFO.gitSha === "local"
+    ? "local"
+    : BUILD_INFO.gitSha.slice(0, 7)}{" "}
+  •{" "}
+  {BUILD_INFO.builtAtIso === "local"
+    ? ""
+    : new Date(BUILD_INFO.builtAtIso).toLocaleString()}
+</div>
       </div>
     </div>
   );
