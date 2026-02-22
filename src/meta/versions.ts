@@ -6,6 +6,18 @@ export type VersionMeta = {
 
 export const VERSION_HISTORY: VersionMeta[] = [
   {
+  version: "0.3.0",
+  deployedAtIso: "TBD",
+  notes: [
+    "Added SHARE modal with WhatsApp, Telegram, X, Email, Copy",
+    "Improved modal scroll lock handling",
+    "Reset now restores original puzzle state (no regeneration)",
+    "Practice mode now allows manual PAR selection",
+    "Share + Practice buttons aligned on same row",
+    "UI spacing and button sizing improvements",
+  ],
+},
+{
     version: "0.2.0",
     deployedAtIso: "2026-02-22T13:40:11Z",
     notes: [

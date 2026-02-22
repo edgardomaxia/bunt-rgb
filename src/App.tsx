@@ -33,6 +33,7 @@ type RunState = {
   puzzleKind: PuzzleKind;
   par: number;
   grid: Color[];
+  initialGrid: Color[];
   clicks: number;
   elapsedMs: number;
 };
@@ -81,17 +82,23 @@ function loadRunState(): RunState | null {
     const raw = localStorage.getItem(RUN_STATE_KEY);
     if (!raw) return null;
 
-    const parsed = JSON.parse(raw) as Partial<RunState>;
-    if (!parsed.puzzleKind || !parsed.par || !parsed.grid) return null;
-    if (!Array.isArray(parsed.grid) || parsed.grid.length !== SIZE * SIZE) return null;
+const parsed = JSON.parse(raw) as Partial<RunState>;
+if (!parsed.puzzleKind || parsed.par == null || !parsed.grid) return null;
+if (!Array.isArray(parsed.grid) || parsed.grid.length !== SIZE * SIZE) return null;
 
-    return {
-      puzzleKind: parsed.puzzleKind,
-      par: Number(parsed.par),
-      grid: parsed.grid as Color[],
-      clicks: Number(parsed.clicks ?? 0),
-      elapsedMs: Number(parsed.elapsedMs ?? 0),
-    };
+const initialGrid =
+  Array.isArray((parsed as any).initialGrid) && (parsed as any).initialGrid.length === SIZE * SIZE
+    ? ((parsed as any).initialGrid as Color[])
+    : (parsed.grid as Color[]);
+
+return {
+  puzzleKind: parsed.puzzleKind,
+  par: Number(parsed.par),
+  grid: parsed.grid as Color[],
+  initialGrid,
+  clicks: Number(parsed.clicks ?? 0),
+  elapsedMs: Number(parsed.elapsedMs ?? 0),
+};
   } catch {
     return null;
   }
@@ -123,9 +130,11 @@ export default function App() {
     return loadRunState();
   }, []);
 
-  const [mode, setMode] = useState<Mode>("normal");
+const [mode, setMode] = useState<Mode>("normal");
+const [practicePar, setPracticePar] = useState<number>(5);
   const [isVersionOpen, setIsVersionOpen] = useState(false);
-  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+const [isShareOpen, setIsShareOpen] = useState(false);
 
   const [puzzleKind, setPuzzleKind] = useState<PuzzleKind>(() => initialRun?.puzzleKind ?? "random");
 
@@ -138,6 +147,11 @@ export default function App() {
     if (initialRun) return initialRun.grid;
     return scrambleFromSolved(scrambleMovesFor("random"));
   });
+
+const [initialGrid, setInitialGrid] = useState<Color[]>(() => {
+  if (initialRun) return (initialRun.initialGrid ?? initialRun.grid) as Color[];
+  return scrambleFromSolved(scrambleMovesFor("random"));
+});
 
   const [clicks, setClicks] = useState(() => initialRun?.clicks ?? 0);
   const [elapsedMs, setElapsedMs] = useState(() => initialRun?.elapsedMs ?? 0);
@@ -210,7 +224,11 @@ export default function App() {
 
 
 
-  function stopTimer() {
+function getShareText() {
+  return `Can you solve this?\nhttps://bunt-rgb.vercel.app/`;
+}
+
+function stopTimer() {
     runningRef.current = false;
     if (rafIdRef.current != null) {
       cancelAnimationFrame(rafIdRef.current);
@@ -242,13 +260,14 @@ export default function App() {
       return;
     }
 
-    saveRunState({
-      puzzleKind,
-      par,
-      grid,
-      clicks,
-      elapsedMs,
-    });
+saveRunState({
+  puzzleKind,
+  par,
+  grid,
+  initialGrid,
+  clicks,
+  elapsedMs,
+});
   }, [mode, puzzleKind, par, grid, clicks, elapsedMs]);
 
   // Stop timer on solve
@@ -292,26 +311,27 @@ export default function App() {
     });
   }, [mode, isSolved, puzzleKind, efficiencyScore, elapsedMs, clicks, par]);
 
-  // ESC closes modals + lock body scroll when any modal is open
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setIsVersionOpen(false);
-        setIsFeedbackOpen(false);
-      }
+// ESC closes modals + lock body scroll when any modal is open
+useEffect(() => {
+  function onKeyDown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      setIsVersionOpen(false);
+      setIsFeedbackOpen(false);
+      setIsShareOpen(false);
     }
-    window.addEventListener("keydown", onKeyDown);
+  }
 
-    const anyModalOpen = isVersionOpen || isFeedbackOpen;
-    const prevOverflow = document.body.style.overflow;
-    if (anyModalOpen) document.body.style.overflow = "hidden";
+  window.addEventListener("keydown", onKeyDown);
 
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [isVersionOpen, isFeedbackOpen]);
+  const anyModalOpen = isVersionOpen || isFeedbackOpen || isShareOpen;
+  const prevOverflow = document.body.style.overflow;
+  if (anyModalOpen) document.body.style.overflow = "hidden";
 
+  return () => {
+    window.removeEventListener("keydown", onKeyDown);
+    document.body.style.overflow = prevOverflow;
+  };
+}, [isVersionOpen, isFeedbackOpen, isShareOpen]);
   function loadPuzzle(kind: PuzzleKind) {
     const scrambleMoves =
       kind === "random"
@@ -322,8 +342,9 @@ export default function App() {
 
     setPuzzleKind(kind);
     setPar(nextPar);
-    setGrid(kind === "solved" ? solvedGrid("red") : scrambleFromSolved(scrambleMoves));
-
+const nextGrid = kind === "solved" ? solvedGrid("red") : scrambleFromSolved(scrambleMoves);
+setInitialGrid(nextGrid.slice());
+setGrid(nextGrid);
     setClicks(0);
     setElapsedMs(0);
 
@@ -334,8 +355,34 @@ export default function App() {
     // ensure Random never persists across refresh
     if (kind === "random") clearRunState();
   }
+function loadPracticeWithPar(moves: number) {
+  const safeMoves = clamp(Math.floor(moves), 1, 100);
 
-  function clearLeaderboards() {
+  const nextGrid = scrambleFromSolved(safeMoves);
+  const nextPar = parForScrambleMoves(safeMoves);
+
+  setPuzzleKind("random");
+  setPar(nextPar);
+  setInitialGrid(nextGrid.slice());
+  setGrid(nextGrid);
+  setClicks(0);
+  setElapsedMs(0);
+
+  stopTimer();
+  startTimeRef.current = null;
+  savedThisRunRef.current = false;
+}
+function resetToInitial() {
+  setGrid(initialGrid.slice());
+  setClicks(0);
+  setElapsedMs(0);
+
+  stopTimer();
+  startTimeRef.current = null;
+  savedThisRunRef.current = false;
+}
+
+function clearLeaderboards() {
     const empty = emptyLeaderboards();
     setLeaderboards(empty);
     saveLeaderboards(empty);
@@ -560,7 +607,116 @@ export default function App() {
         </div>
       ) : null}
 
-      {/* FEEDBACK MODAL (Tally iframe) */}
+      {/* SHARE MODAL */}
+{isShareOpen ? (
+  <div
+    onClick={() => setIsShareOpen(false)}
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,.6)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 16,
+      zIndex: 58,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: "min(520px, 92vw)",
+        borderRadius: 16,
+        border: "1px solid rgba(255,255,255,.14)",
+        background: "rgba(15,15,15,.96)",
+        boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+        padding: 16,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Share</div>
+        <button
+          onClick={() => setIsShareOpen(false)}
+          style={{
+            border: "1px solid rgba(255,255,255,.14)",
+            background: "rgba(255,255,255,.06)",
+            color: "#fff",
+            borderRadius: 12,
+            padding: "8px 10px",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          Close
+        </button>
+      </div>
+
+      <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10, whiteSpace: "pre-wrap" }}>
+        {getShareText()}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
+        <button
+          onClick={() => {
+            const text = getShareText();
+            navigator.clipboard.writeText(text);
+            alert("Copied!");
+            setIsShareOpen(false);
+          }}
+          style={btnStyle}
+        >
+          Copy
+        </button>
+
+        <button
+          onClick={() => {
+            const text = getShareText();
+            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+          }}
+          style={btnStyle}
+        >
+          WhatsApp
+        </button>
+
+        <button
+          onClick={() => {
+            const text = getShareText();
+            window.open(`https://t.me/share/url?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+          }}
+          style={btnStyle}
+        >
+          Telegram
+        </button>
+
+        <button
+          onClick={() => {
+            const text = getShareText();
+            window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+          }}
+          style={btnStyle}
+        >
+          X
+        </button>
+
+        <button
+          onClick={() => {
+            const text = getShareText();
+            window.location.href = `mailto:?subject=${encodeURIComponent("BUNT RGB challenge")}&body=${encodeURIComponent(text)}`;
+          }}
+          style={btnStyle}
+        >
+          Email
+        </button>
+      </div>
+
+      <div style={{ opacity: 0.6, fontSize: 12, marginTop: 12 }}>
+        Tip: click outside or press ESC to close.
+      </div>
+    </div>
+  </div>
+) : null}
+
+{/* FEEDBACK MODAL (Tally iframe) */}
       {isFeedbackOpen ? (
         <div
           onClick={() => setIsFeedbackOpen(false)}
@@ -698,62 +854,100 @@ export default function App() {
           ))}
         </div>
 
-        {/* BUTTONS */}
-        {isPractice ? (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-            <button onClick={() => loadPuzzle("easy")} style={btnStyle}>
-              Easy (PAR 2)
-            </button>
+{/* BUTTONS */}
+{isPractice ? (
+  <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
+      <div style={{ fontSize: 14, opacity: 0.85 }}>PAR</div>
 
-            <button onClick={() => loadPuzzle("medium")} style={btnStyle}>
-              Medium (PAR 6)
-            </button>
+      <input
+        type="number"
+        min={1}
+        max={100}
+        value={practicePar}
+        onChange={(e) => setPracticePar(Number(e.target.value))}
+        style={{
+          width: 90,
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,.18)",
+          background: "rgba(255,255,255,.06)",
+          color: "#fff",
+          fontSize: 14,
+          outline: "none",
+        }}
+      />
 
-            <button onClick={() => loadPuzzle("random")} style={btnStyle}>
-              Random
-            </button>
+      <button
+        onClick={() => loadPracticeWithPar(practicePar)}
+        style={btnStyle}
+      >
+        Generate
+      </button>
+    </div>
 
-            <button
-              onClick={() => {
-                setMode("normal");
-                loadPuzzle("random");
-              }}
-              style={backBtnStyle}
-            >
-              Back
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-              <button onClick={() => loadPuzzle("easy")} style={btnStyle}>
-                Easy (PAR 2)
-              </button>
+    <button
+      onClick={() => {
+        setMode("normal");
+        loadPuzzle("random");
+      }}
+      style={backBtnStyle}
+    >
+      Back
+    </button>
+  </div>
+) : (
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+      <button onClick={() => loadPuzzle("easy")} style={btnStyle}>
+        Easy (PAR 2)
+      </button>
 
-              <button onClick={() => loadPuzzle("medium")} style={btnStyle}>
-                Medium (PAR 6)
-              </button>
+      <button onClick={() => loadPuzzle("medium")} style={btnStyle}>
+        Medium (PAR 6)
+      </button>
 
-              <button onClick={() => loadPuzzle("random")} style={btnStyle}>
-                Random (PAR 10–60)
-              </button>
+      <button onClick={() => loadPuzzle("random")} style={btnStyle}>
+        Random (PAR 10–60)
+      </button>
 
-              <button onClick={() => loadPuzzle("random")} style={resetBtnStyle}>
-                Reset
-              </button>
-            </div>
+      <button onClick={resetToInitial} style={resetBtnStyle}>
+        Reset
+      </button>
+    </div>
 
-            <button
-              onClick={() => {
-                setMode("practice");
-                loadPuzzle("random");
-              }}
-              style={practiceBtnStyle}
-            >
-              PRACTICE MODE
-            </button>
-          </div>
-        )}
+    <div style={{ display: "flex", gap: 10, justifyContent: "center", width: "100%" }}>
+      <button
+        onClick={() => setIsShareOpen(true)}
+        style={{
+          ...practiceBtnStyle,
+          fontSize: 14,
+          letterSpacing: 1.2,
+          fontWeight: 800,
+          padding: "12px 18px",
+          flex: 1,
+          maxWidth: 260,
+        }}
+      >
+        SHARE
+      </button>
+
+      <button
+        onClick={() => {
+          setMode("practice");
+          loadPracticeWithPar(practicePar);
+        }}
+        style={{
+          ...practiceBtnStyle,
+          flex: 1,
+          maxWidth: 260,
+        }}
+      >
+        PRACTICE MODE
+      </button>
+    </div>
+  </div>
+)}
 
         {/* LEADERBOARDS (normal only) */}
         {isPractice ? null : (
