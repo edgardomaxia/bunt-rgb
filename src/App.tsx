@@ -1,3 +1,5 @@
+import { APP_VERSION, APP_STATUS } from "./meta/appMeta";
+import { VERSION_HISTORY } from "./meta/versions";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Color, PuzzleKind } from "./engine/types";
 import {
@@ -116,6 +118,7 @@ export default function App() {
   }, []);
 
   const [mode, setMode] = useState<Mode>("normal");
+    const [isVersionOpen, setIsVersionOpen] = useState(false);
 
   const [puzzleKind, setPuzzleKind] = useState<PuzzleKind>(() => initialRun?.puzzleKind ?? "random");
 
@@ -203,6 +206,13 @@ export default function App() {
     maxWidth: 720,
   };
 
+    function closeVersionModal() {
+    setIsVersionOpen(false);
+  }
+
+  function openVersionModal() {
+    setIsVersionOpen(true);
+  }
   function stopTimer() {
     runningRef.current = false;
     if (rafIdRef.current != null) {
