@@ -17,7 +17,7 @@ export const VERSION_HISTORY: VersionMeta[] = [
   },
   {
     version: "0.1.0",
-    deployedAtIso: "TBD",
+   deployedAtIso: "2026-02-20T18:44:33+01:00",
     notes: [
       "Core 5×5 puzzle (3 colors)",
       "Timer + clicks + efficiency score",
