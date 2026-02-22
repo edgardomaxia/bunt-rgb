@@ -3,10 +3,13 @@ import type { Color, PuzzleKind } from "./engine/types";
 import {
   SIZE,
   applyMove,
-  scrambleFromSolved,
-  scrambleMovesFor,
   solvedGrid,
-  parForScrambleMoves,
+  generateEasyRealPar3Distinct,
+  generateMediumPlanted,
+  generateRandomRealPar,
+  gridFromSolution,
+  randomTargetColor,
+  minParSolutionToAnySolved,
 } from "./engine/engine";
 import { APP_VERSION, APP_STATUS } from "./meta/appMeta";
 import { VERSION_HISTORY } from "./meta/versions";
@@ -123,12 +126,50 @@ const TILE_COLORS: Record<Color, string> = {
   green: "#00d500",
   blue: "#0033ff",
 };
+function formatOnlineIso(iso: string) {
+  const fmt = (d: Date) => {
+    const date = d.toLocaleDateString("it-IT", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const time = d.toLocaleTimeString("it-IT", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
+    const off = -d.getTimezoneOffset() / 60;
+    const sign = off >= 0 ? "+" : "-";
+    const hh = String(Math.abs(off)).padStart(2, "0");
+    return `online: ${date}, ${time} (GMT${sign}${hh})`;
+  };
+
+  if (iso === "TBD") return "online: TBD";
+
+  // AUTO = usa build time, ma se non è una data valida => local
+  if (iso === "AUTO") {
+    const d = new Date(BUILD_INFO.builtAtIso);
+    if (BUILD_INFO.builtAtIso === "local") return "online: local";
+    if (Number.isNaN(d.getTime())) return "online: local";
+    return fmt(d);
+  }
+
+  // ISO esplicito nel versions.ts
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return `online: ${iso}`;
+  return fmt(d);
+}
 export default function App() {
   const initialRun = useMemo(() => {
     if (typeof window === "undefined") return null;
     return loadRunState();
+    
   }, []);
+  const bootstrap = useMemo(() => {
+  if (typeof window === "undefined") return null;
+  if (initialRun) return null;
+  return generateRandomRealPar();
+}, [initialRun]);
 
 const [mode, setMode] = useState<Mode>("normal");
 const [practicePar, setPracticePar] = useState<number>(5);
@@ -138,19 +179,19 @@ const [isShareOpen, setIsShareOpen] = useState(false);
 
   const [puzzleKind, setPuzzleKind] = useState<PuzzleKind>(() => initialRun?.puzzleKind ?? "random");
 
-  const [par, setPar] = useState<number>(() => {
-    if (initialRun) return initialRun.par;
-    return parForScrambleMoves(scrambleMovesFor("random"));
-  });
+const [par, setPar] = useState<number>(() => {
+  if (initialRun) return initialRun.par;
+  return bootstrap?.par ?? 0;
+});
 
-  const [grid, setGrid] = useState<Color[]>(() => {
-    if (initialRun) return initialRun.grid;
-    return scrambleFromSolved(scrambleMovesFor("random"));
-  });
+const [grid, setGrid] = useState<Color[]>(() => {
+  if (initialRun) return initialRun.grid;
+  return bootstrap?.grid ?? solvedGrid("red");
+});
 
 const [initialGrid, setInitialGrid] = useState<Color[]>(() => {
   if (initialRun) return (initialRun.initialGrid ?? initialRun.grid) as Color[];
-  return scrambleFromSolved(scrambleMovesFor("random"));
+  return (bootstrap?.grid ?? solvedGrid("red")).slice();
 });
 
   const [clicks, setClicks] = useState(() => initialRun?.clicks ?? 0);
@@ -332,34 +373,89 @@ useEffect(() => {
     document.body.style.overflow = prevOverflow;
   };
 }, [isVersionOpen, isFeedbackOpen, isShareOpen]);
-  function loadPuzzle(kind: PuzzleKind) {
-    const scrambleMoves =
-      kind === "random"
-        ? 5 + Math.floor(Math.random() * 26) // 5..30
-        : scrambleMovesFor(kind);
+function loadPuzzle(kind: PuzzleKind) {
+  let nextGrid: Color[];
+  let nextPar: number;
 
-    const nextPar = parForScrambleMoves(scrambleMoves);
+if (kind === "easy") {
+  const g = generateEasyRealPar3Distinct();
 
-    setPuzzleKind(kind);
-    setPar(nextPar);
-const nextGrid = kind === "solved" ? solvedGrid("red") : scrambleFromSolved(scrambleMoves);
-setInitialGrid(nextGrid.slice());
-setGrid(nextGrid);
-    setClicks(0);
-    setElapsedMs(0);
+  
 
-    stopTimer();
-    startTimeRef.current = null;
-    savedThisRunRef.current = false;
-
-    // ensure Random never persists across refresh
-    if (kind === "random") clearRunState();
+  nextGrid = g.grid;
+  nextPar = g.par;
+} else if (kind === "medium") {
+    const g = generateMediumPlanted(6);
+    nextGrid = g.grid;
+    nextPar = g.par; // real min-par (often ~6, can vary)
+  } else if (kind === "random") {
+    const g = generateRandomRealPar();
+    nextGrid = g.grid;
+    nextPar = g.par; // real min-par for that random puzzle
+  } else {
+    // solved
+    nextGrid = solvedGrid("red");
+    nextPar = 0;
   }
-function loadPracticeWithPar(moves: number) {
-  const safeMoves = clamp(Math.floor(moves), 1, 100);
 
-  const nextGrid = scrambleFromSolved(safeMoves);
-  const nextPar = parForScrambleMoves(safeMoves);
+  setPuzzleKind(kind);
+  setPar(nextPar);
+  setInitialGrid(nextGrid.slice());
+  setGrid(nextGrid);
+  setClicks(0);
+  setElapsedMs(0);
+
+  stopTimer();
+  startTimeRef.current = null;
+  savedThisRunRef.current = false;
+
+  // ensure Random never persists across refresh
+  if (kind === "random") clearRunState();
+}
+function loadPracticeWithPar(parTarget: number) {
+  const safePar = clamp(Math.floor(parTarget), 1, 100);
+
+  // Strategy: "plant" exactly N distinct 1-clicks to create a puzzle,
+  // then compute its REAL min-PAR (may be <= planted count).
+  // We loop a bit to try to hit real PAR close to the requested value.
+  let bestGrid: Color[] | null = null;
+  let bestPar = Infinity;
+
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const target = randomTargetColor();
+
+    // make a simple planted vector: safePar distinct 1-clicks (capped)
+    const k = clamp(safePar, 2, 25);
+    const vec = new Array<number>(SIZE * SIZE).fill(0);
+    // random distinct indices
+    const pool = Array.from({ length: SIZE * SIZE }, (_, i) => i);
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    for (let i = 0; i < k; i++) vec[pool[i]] = 1;
+
+    const grid = gridFromSolution(target, vec);
+    const sol = minParSolutionToAnySolved(grid);
+    const realPar = sol.par;
+
+    // prefer exact match, otherwise closest above/below
+    if (realPar === safePar) {
+      bestGrid = grid;
+      bestPar = realPar;
+      break;
+    }
+
+    if (Math.abs(realPar - safePar) < Math.abs(bestPar - safePar)) {
+      bestGrid = grid;
+      bestPar = realPar;
+    }
+  }
+
+  const nextGrid = bestGrid ?? gridFromSolution(randomTargetColor(), new Array(SIZE * SIZE).fill(0));
+ const computed = minParSolutionToAnySolved(nextGrid);
+const nextPar = bestPar !== Infinity ? bestPar : computed.par;
+
 
   setPuzzleKind("random");
   setPar(nextPar);
@@ -509,7 +605,7 @@ function clearLeaderboards() {
           }}
           title="Send anonymous feedback"
         >
-          Anonymous
+          Send
           <br />
           Feedback
         </button>
@@ -579,8 +675,7 @@ function clearLeaderboards() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                     <div style={{ fontSize: 14, letterSpacing: 0.2 }}>v{v.version}</div>
                     <div style={{ fontSize: 12, opacity: 0.7 }}>
-                      {v.deployedAtIso === "TBD" ? "online: TBD" : `online: ${v.deployedAtIso}`}
-                    </div>
+{formatOnlineIso(v.deployedAtIso)}                    </div>
                   </div>
 
                   <ul style={{ margin: "10px 0 0 18px", padding: 0, opacity: 0.9, fontSize: 13 }}>
@@ -890,7 +985,7 @@ function clearLeaderboards() {
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
       <button onClick={() => loadPuzzle("easy")} style={btnStyle}>
-        Easy (PAR 2)
+        Easy (PAR 3)
       </button>
 
       <button onClick={() => loadPuzzle("medium")} style={btnStyle}>
@@ -898,7 +993,7 @@ function clearLeaderboards() {
       </button>
 
       <button onClick={() => loadPuzzle("random")} style={btnStyle}>
-        Random (PAR 10–60)
+        Difficult (PAR 10–60)
       </button>
 
       <button onClick={resetToInitial} style={resetBtnStyle}>

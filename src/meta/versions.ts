@@ -7,7 +7,7 @@ export type VersionMeta = {
 export const VERSION_HISTORY: VersionMeta[] = [
   {
     version: "0.4.0",
-    deployedAtIso: "TBD",
+    deployedAtIso: "AUTO",
     notes: [
       "Math fix: generation now applies inverse Z3 moves (mod 3)",
       "PAR now reflects solver-consistent minimum clicks",
