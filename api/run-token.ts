@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "./_lib/supabaseAdmin";
-import { mintRunToken, type RunMode } from "./_lib/token";
-import { rateLimitOrThrow } from "./_lib/rateLimit";
+import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
+import { mintRunToken, type RunMode } from "./_lib/token.js";
+import { rateLimitOrThrow } from "./_lib/rateLimit.js";
 
 const TTL_SECONDS = 10 * 60; // 10 minutes
 

@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "./_lib/supabaseAdmin";
-import { verifyRunToken } from "./_lib/token";
-import { rateLimitOrThrow } from "./_lib/rateLimit";
+import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
+import { verifyRunToken } from "./_lib/token.js";
+import { rateLimitOrThrow } from "./_lib/rateLimit.js";
 
 function getIp(req: VercelRequest): string {
   const xff = req.headers["x-forwarded-for"];
