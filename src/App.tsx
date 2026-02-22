@@ -383,6 +383,7 @@ export default function App() {
   return (
     <div
       style={{
+        position: "relative",
         minHeight: "100vh",
         width: "100vw",
         display: "flex",
@@ -395,6 +396,36 @@ export default function App() {
         boxSizing: "border-box",
       }}
     >
+        {/* TOP-RIGHT VERSION BADGE */}
+    <div
+      style={{
+        position: "absolute",
+        top: 14,
+        right: 14,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-end",
+        gap: 6,
+        zIndex: 10,
+      }}
+    >
+      <button
+        onClick={openVersionModal}
+        style={{
+          border: "1px solid rgba(255,255,255,.14)",
+          background: "rgba(255,255,255,.05)",
+          color: "#fff",
+          borderRadius: 12,
+          padding: "8px 10px",
+          cursor: "pointer",
+          textAlign: "right",
+          lineHeight: 1.15,
+        }}
+      >
+        <div style={{ fontSize: 12, opacity: 0.9 }}>v{APP_VERSION}</div>
+        <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>{APP_STATUS}</div>
+      </button>
+    </div>
       <div
         style={{
           ...appShellStyle,
