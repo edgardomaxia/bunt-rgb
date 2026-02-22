@@ -1,5 +1,3 @@
-import { APP_VERSION, APP_STATUS } from "./meta/appMeta";
-import { VERSION_HISTORY } from "./meta/versions";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Color, PuzzleKind } from "./engine/types";
 import {
@@ -10,6 +8,8 @@ import {
   solvedGrid,
   parForScrambleMoves,
 } from "./engine/engine";
+import { APP_VERSION, APP_STATUS } from "./meta/appMeta";
+import { VERSION_HISTORY } from "./meta/versions";
 
 const LEADERBOARD_SIZE = 10;
 const STORAGE_KEY = "bunt_rgb_leaderboards_v1";
@@ -81,7 +81,7 @@ function loadRunState(): RunState | null {
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as Partial<RunState>;
- if (!parsed.puzzleKind || !parsed.par || !parsed.grid) return null;
+    if (!parsed.puzzleKind || !parsed.par || !parsed.grid) return null;
     if (!Array.isArray(parsed.grid) || parsed.grid.length !== SIZE * SIZE) return null;
 
     return {
@@ -118,7 +118,7 @@ export default function App() {
   }, []);
 
   const [mode, setMode] = useState<Mode>("normal");
-    const [isVersionOpen, setIsVersionOpen] = useState(false);
+  const [isVersionOpen, setIsVersionOpen] = useState(false);
 
   const [puzzleKind, setPuzzleKind] = useState<PuzzleKind>(() => initialRun?.puzzleKind ?? "random");
 
@@ -206,13 +206,14 @@ export default function App() {
     maxWidth: 720,
   };
 
-    function closeVersionModal() {
+  function closeVersionModal() {
     setIsVersionOpen(false);
   }
 
   function openVersionModal() {
     setIsVersionOpen(true);
   }
+
   function stopTimer() {
     runningRef.current = false;
     if (rafIdRef.current != null) {
@@ -296,6 +297,15 @@ export default function App() {
     });
   }, [mode, isSolved, puzzleKind, efficiencyScore, elapsedMs, clicks, par]);
 
+  // ESC closes version modal
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsVersionOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   function loadPuzzle(kind: PuzzleKind) {
     const scrambleMoves =
       kind === "random"
@@ -356,10 +366,7 @@ export default function App() {
                 </tr>
               ) : (
                 rows.map((r, i) => (
-                  <tr
-                    key={`${r.iso}-${i}`}
-                    style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}
-                  >
+                  <tr key={`${r.iso}-${i}`} style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
                     <td style={{ padding: "8px 6px" }}>{i + 1}</td>
                     <td style={{ padding: "8px 6px" }}>{r.score}</td>
                     <td style={{ padding: "8px 6px" }}>{formatTimeMs(r.timeMs)}</td>
@@ -396,36 +403,132 @@ export default function App() {
         boxSizing: "border-box",
       }}
     >
-        {/* TOP-RIGHT VERSION BADGE */}
-    <div
-      style={{
-        position: "absolute",
-        top: 14,
-        right: 14,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-end",
-        gap: 6,
-        zIndex: 10,
-      }}
-    >
-      <button
-        onClick={openVersionModal}
+      {/* TOP-RIGHT VERSION */}
+      <div
         style={{
-          border: "1px solid rgba(255,255,255,.14)",
-          background: "rgba(255,255,255,.05)",
-          color: "#fff",
-          borderRadius: 12,
-          padding: "8px 10px",
-          cursor: "pointer",
+          position: "absolute",
+          top: 25,
+          right: 25,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-end",
+          gap: 2,
+          zIndex: 10,
           textAlign: "right",
-          lineHeight: 1.15,
         }}
       >
-        <div style={{ fontSize: 12, opacity: 0.9 }}>v{APP_VERSION}</div>
-        <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>{APP_STATUS}</div>
-      </button>
-    </div>
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={openVersionModal}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") openVersionModal();
+          }}
+          style={{
+            fontSize: 12,
+            opacity: 0.9,
+            textDecoration: "underline",
+            cursor: "pointer",
+            userSelect: "none",
+          }}
+          aria-label={`open-version-history-v${APP_VERSION}`}
+          title="Open version history"
+        >
+          v{APP_VERSION}
+        </span>
+
+        <div style={{ fontSize: 11, opacity: 0.65 }}>{APP_STATUS}</div>
+      </div>
+
+      {/* VERSION HISTORY MODAL */}
+      {isVersionOpen ? (
+        <div
+          onClick={closeVersionModal}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.55)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(680px, 92vw)",
+              maxHeight: "min(760px, 86vh)",
+              overflow: "auto",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(15,15,15,.96)",
+              boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+              padding: 16,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                gap: 12,
+              }}
+            >
+              <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Version history</div>
+              <button
+                onClick={closeVersionModal}
+                style={{
+                  border: "1px solid rgba(255,255,255,.14)",
+                  background: "rgba(255,255,255,.06)",
+                  color: "#fff",
+                  borderRadius: 12,
+                  padding: "8px 10px",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <div style={{ opacity: 0.65, fontSize: 12, marginTop: 6 }}>
+              Click outside or press ESC to close.
+            </div>
+
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 12 }}>
+              {VERSION_HISTORY.map((v) => (
+                <div
+                  key={v.version}
+                  style={{
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,.10)",
+                    background: "rgba(255,255,255,.04)",
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ fontSize: 14, letterSpacing: 0.2 }}>v{v.version}</div>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>
+                      {v.deployedAtIso === "TBD" ? "online: TBD" : `online: ${v.deployedAtIso}`}
+                    </div>
+                  </div>
+
+                  <ul style={{ margin: "10px 0 0 18px", padding: 0, opacity: 0.9, fontSize: 13 }}>
+                    {v.notes.map((n, i) => (
+                      <li key={i} style={{ margin: "6px 0" }}>
+                        {n}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div
         style={{
           ...appShellStyle,
@@ -444,14 +547,10 @@ export default function App() {
 
           <h1 style={{ margin: "70px 0 0 0", fontSize: 66, letterSpacing: 1 }}>BUNT RGB</h1>
 
-          <div style={{ opacity: 0.85, marginTop: 0, fontSize: 18 }}>
-            Make all tiles the same color
-          </div>
+          <div style={{ opacity: 0.85, marginTop: 0, fontSize: 18 }}>Make all tiles the same color</div>
 
           {isPractice ? null : (
-            <div style={{ opacity: 0.6, marginTop: 8, fontSize: 12 }}>
-              (Timer starts on first click)
-            </div>
+            <div style={{ opacity: 0.6, marginTop: 8, fontSize: 12 }}>(Timer starts on first click)</div>
           )}
 
           {isPractice ? null : (
@@ -487,9 +586,7 @@ export default function App() {
             </div>
           )}
 
-          <div style={{ marginTop: 10, opacity: 0.9 }}>
-            {isSolved ? "✅ Solved" : ""}
-          </div>
+          <div style={{ marginTop: 10, opacity: 0.9 }}>{isSolved ? "✅ Solved" : ""}</div>
         </div>
 
         <div
@@ -550,14 +647,7 @@ export default function App() {
             </button>
           </div>
         ) : (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
               <button onClick={() => loadPuzzle("easy")} style={btnStyle}>
                 Easy (PAR 2)
@@ -592,9 +682,7 @@ export default function App() {
         {/* LEADERBOARDS (normal only) */}
         {isPractice ? null : (
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 12 }}>
-            <h2
-              style={{ margin: "0 0 6px 0", fontSize: 20, letterSpacing: 0.4, opacity: 0.9 }}
-            >
+            <h2 style={{ margin: "0 0 6px 0", fontSize: 20, letterSpacing: 0.4, opacity: 0.9 }}>
               Leaderboards
             </h2>
 
