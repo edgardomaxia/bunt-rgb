@@ -207,10 +207,7 @@ export default function App() {
     color: "#000",
   };
 
-  const appShellStyle: React.CSSProperties = {
-    width: "100%",
-    maxWidth: 720,
-  };
+
 
   function stopTimer() {
     runningRef.current = false;
