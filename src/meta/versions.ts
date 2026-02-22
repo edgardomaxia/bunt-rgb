@@ -1,25 +1,36 @@
 export type VersionMeta = {
-  version: string;            // "0.2.0"
-  deployedAtIso: string;      // "2026-02-22T11:34:00+01:00" (manuale per ora)
-  notes: string[];            // bullet list
+  version: string;
+  deployedAtIso: string; // ISO 8601 with offset
+  notes: string[];
 };
 
 export const VERSION_HISTORY: VersionMeta[] = [
   {
-  version: "0.3.0",
-deployedAtIso: "2026-02-22 15:18:09",
-  notes: [
-    "Added SHARE modal with WhatsApp, Telegram, X, Email, Copy",
-    "Improved modal scroll lock handling",
-    "Reset now restores original puzzle state (no regeneration)",
-    "Practice mode now allows manual PAR selection",
-    "Share + Practice buttons aligned on same row",
-    "UI spacing and button sizing improvements",
-  ],
-},
-{
+    version: "0.4.0",
+    deployedAtIso: "TBD",
+    notes: [
+      "Math fix: generation now applies inverse Z3 moves (mod 3)",
+      "PAR now reflects solver-consistent minimum clicks",
+      "Practice mode generates puzzles with exact requested PAR",
+      "Easy mode verified at real PAR 3 (solver-validated)",
+      "Eliminated generator/solver rule mismatch",
+    ],
+  },
+  {
+    version: "0.3.0",
+    deployedAtIso: "2026-02-22T15:18:09+01:00",
+    notes: [
+      "Added SHARE modal with WhatsApp, Telegram, X, Email, Copy",
+      "Improved modal scroll lock handling",
+      "Reset now restores original puzzle state (no regeneration)",
+      "Practice mode now allows manual PAR selection",
+      "Share + Practice buttons aligned on same row",
+      "UI spacing and button sizing improvements",
+    ],
+  },
+  {
     version: "0.2.0",
-    deployedAtIso: "2026-02-22T13:40:11Z",
+    deployedAtIso: "2026-02-22T13:40:11+00:00",
     notes: [
       "Version badge + status",
       "Feedback button (anonymous form link)",
@@ -29,7 +40,7 @@ deployedAtIso: "2026-02-22 15:18:09",
   },
   {
     version: "0.1.0",
-   deployedAtIso: "2026-02-20T18:44:33+01:00",
+    deployedAtIso: "2026-02-20T18:44:33+01:00",
     notes: [
       "Core 5×5 puzzle (3 colors)",
       "Timer + clicks + efficiency score",
