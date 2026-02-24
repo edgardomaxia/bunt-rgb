@@ -1130,7 +1130,7 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
       padding: 0,
       cursor: "pointer",
       textAlign: "center",
-      zIndex: 999,
+      zIndex: 1,
       display: "block",
     }}
   >
