@@ -31,7 +31,18 @@ type LeaderboardEntry = {
 };
 
 type Leaderboards = Record<Exclude<PuzzleKind, "solved">, LeaderboardEntry[]>;
+type GlobalScoreRow = {
+  mode: Exclude<PuzzleKind, "solved">;
+  nickname: string | null;
+  time_ms: number;
+  clicks: number;
+  par: number;
+  efficiency_score: number;
+  created_at: string;
+  app_version: string | null;
+};
 
+type GlobalLeaderboards = Record<Exclude<PuzzleKind, "solved">, GlobalScoreRow[]>;
 type RunState = {
   puzzleKind: PuzzleKind;
   par: number;
@@ -200,6 +211,18 @@ const [initialGrid, setInitialGrid] = useState<Color[]>(() => {
   const [leaderboards, setLeaderboards] = useState<Leaderboards>(() =>
     typeof window === "undefined" ? emptyLeaderboards() : loadLeaderboards()
   );
+  const [lbView, setLbView] = useState<"local" | "global">("local");
+const [globalLb, setGlobalLb] = useState<GlobalLeaderboards>(() => ({
+  easy: [],
+  medium: [],
+  random: [],
+}));
+const [globalLbStatus, setGlobalLbStatus] = useState<
+  "idle" | "loading" | "ready" | "error"
+>("idle");
+const [runToken, setRunToken] = useState<string | null>(null);
+const [globalSaveStatus, setGlobalSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
 
   // Timer refs
   const startTimeRef = useRef<number | null>(null);
@@ -266,7 +289,7 @@ const [initialGrid, setInitialGrid] = useState<Color[]>(() => {
 
 
 function getShareText() {
-  return `Can you solve this?\nhttps://bunt-rgb.vercel.app/`;
+  return `Can you solve this?\nhttps://bunt-rgb.com/demo/`;
 }
 
 function stopTimer() {
@@ -351,7 +374,24 @@ saveRunState({
       return next;
     });
   }, [mode, isSolved, puzzleKind, efficiencyScore, elapsedMs, clicks, par]);
+useEffect(() => {
+  if (mode !== "normal") return;
+  if (!isSolved) return;
+  if (savedThisRunRef.current !== true) return; // garantisce "una volta"
+  if (puzzleKind === "solved") return;
 
+  const kind = puzzleKind as Exclude<PuzzleKind, "solved">;
+  submitGlobalScore(kind);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [mode, isSolved]);
+useEffect(() => {
+  if (lbView !== "global") return;
+  // carica tutte e 3 (semplice e robusto)
+  fetchGlobal("easy");
+  fetchGlobal("medium");
+  fetchGlobal("random");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [lbView]);
 // ESC closes modals + lock body scroll when any modal is open
 useEffect(() => {
   function onKeyDown(e: KeyboardEvent) {
@@ -411,10 +451,15 @@ if (kind === "easy") {
 
   // ensure Random never persists across refresh
   if (kind === "random") clearRunState();
+  if (kind === "easy" || kind === "medium" || kind === "random") {
+  mintRunToken(kind);
+} else {
+  setRunToken(null);
+}
 }
 function loadPracticeWithPar(parTarget: number) {
   const safePar = clamp(Math.floor(parTarget), 1, 100);
-
+  
   // Strategy: "plant" exactly N distinct 1-clicks to create a puzzle,
   // then compute its REAL min-PAR (may be <= planted count).
   // We loop a bit to try to hit real PAR close to the requested value.
@@ -425,7 +470,7 @@ function loadPracticeWithPar(parTarget: number) {
     const target = randomTargetColor();
 
     // make a simple planted vector: safePar distinct 1-clicks (capped)
-    const k = clamp(safePar, 2, 25);
+    const k = clamp(safePar, 1, 25);
     const vec = new Array<number>(SIZE * SIZE).fill(0);
     // random distinct indices
     const pool = Array.from({ length: SIZE * SIZE }, (_, i) => i);
@@ -453,12 +498,11 @@ function loadPracticeWithPar(parTarget: number) {
   }
 
   const nextGrid = bestGrid ?? gridFromSolution(randomTargetColor(), new Array(SIZE * SIZE).fill(0));
- const computed = minParSolutionToAnySolved(nextGrid);
-const nextPar = bestPar !== Infinity ? bestPar : computed.par;
+const computed = minParSolutionToAnySolved(nextGrid);
+void computed; // keep for future debugging if needed
 
-
-  setPuzzleKind("random");
-  setPar(nextPar);
+setPuzzleKind("random");
+setPar(safePar);
   setInitialGrid(nextGrid.slice());
   setGrid(nextGrid);
   setClicks(0);
@@ -483,7 +527,84 @@ function clearLeaderboards() {
     setLeaderboards(empty);
     saveLeaderboards(empty);
   }
+async function fetchGlobal(kind: Exclude<PuzzleKind, "solved">) {
+  try {
+    setGlobalLbStatus("loading");
 
+    const res = await fetch(`/api/leaderboard?mode=${kind}&limit=${LEADERBOARD_SIZE}`);
+    if (!res.ok) throw new Error(`http_${res.status}`);
+
+    const data = (await res.json()) as { mode: string; items: GlobalScoreRow[] };
+
+    setGlobalLb((prev) => ({
+      ...prev,
+      [kind]: Array.isArray(data.items) ? data.items : [],
+    }));
+
+    setGlobalLbStatus("ready");
+  } catch {
+    setGlobalLbStatus("error");
+  }
+}
+
+async function mintRunToken(kind: Exclude<PuzzleKind, "solved">) {
+  try {
+    setGlobalSaveStatus("idle");
+
+    const res = await fetch("/api/run-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: kind }),
+    });
+
+    if (!res.ok) throw new Error(`run-token_http_${res.status}`);
+
+    const data = (await res.json()) as { token: string };
+    setRunToken(typeof data.token === "string" ? data.token : null);
+  } catch {
+    setRunToken(null);
+  }
+}
+
+async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
+  if (!runToken) return;
+
+  try {
+    setGlobalSaveStatus("saving");
+
+    const res = await fetch("/api/score", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: runToken,
+        timeMs: Math.round(elapsedMs),
+        clicks,
+        par,
+        nickname: "claude", // poi lo rendiamo input
+        appVersion:
+          BUILD_INFO?.gitSha === "local"
+            ? "local"
+            : (BUILD_INFO?.gitSha?.slice(0, 7) ?? "unknown"),
+      }),
+    });
+
+    if (!res.ok) throw new Error(`score_http_${res.status}`);
+
+    const data = await res.json();
+    if (!data?.ok) throw new Error("score_not_ok");
+
+    setGlobalSaveStatus("saved");
+
+    // refresh global view if you're looking at it
+    if (lbView === "global") {
+      fetchGlobal("easy");
+      fetchGlobal("medium");
+      fetchGlobal("random");
+    }
+  } catch {
+    setGlobalSaveStatus("error");
+  }
+}
   function renderTable(kind: Exclude<PuzzleKind, "solved">, title: string) {
     const rows = leaderboards[kind];
 
@@ -589,27 +710,86 @@ function clearLeaderboards() {
 
 </div>
 
-      {/* HEADER RIGHT: feedback button */}
-      <div style={{ position: "absolute", top: 22, right: 30, zIndex: 5 }}>
-        <button
-          onClick={() => setIsFeedbackOpen(true)}
-          style={{
-            background: "rgba(255,255,255,.08)",
-            border: "1px solid rgba(255,255,255,.15)",
-            color: "#fff",
-            padding: "8px 12px",
-            borderRadius: 12,
-            fontSize: 11,
-            cursor: "pointer",
-            lineHeight: 1.15,
-          }}
-          title="Send anonymous feedback"
-        >
-          Send
-          <br />
-          Feedback
-        </button>
-      </div>
+{/* HEADER RIGHT: links + feedback */}
+<div
+  style={{
+    position: "absolute",
+    top: 22,
+    right: 30,
+    zIndex: 5,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    alignItems: "flex-end",
+  }}
+>
+  <a
+    href="https://bunt-rgb.com/"
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{
+      background: "rgba(255,255,255,.08)",
+      border: "1px solid rgba(255,255,255,.15)",
+      color: "#fff",
+      padding: "8px 12px",
+      borderRadius: 12,
+      fontSize: 11,
+      cursor: "pointer",
+      lineHeight: 1.15,
+      textDecoration: "none",
+      display: "inline-block",
+      textAlign: "center",
+    }}
+    title="Official website"
+  >
+    Official
+    <br />
+    Website
+  </a>
+
+  <a
+    href="https://www.youtube.com/@BuntRGB"
+    target="_blank"
+    rel="noopener noreferrer"
+    style={{
+      background: "rgba(255,255,255,.08)",
+      border: "1px solid rgba(255,255,255,.15)",
+      color: "#fff",
+      padding: "8px 12px",
+      borderRadius: 12,
+      fontSize: 11,
+      cursor: "pointer",
+      lineHeight: 1.15,
+      textDecoration: "none",
+      display: "inline-block",
+      textAlign: "center",
+    }}
+    title="Follow my devlog journey"
+  >
+    Follow my
+    <br />
+    Devlog
+  </a>
+
+  <button
+    onClick={() => setIsFeedbackOpen(true)}
+    style={{
+      background: "rgba(255,255,255,.08)",
+      border: "1px solid rgba(255,255,255,.15)",
+      color: "#fff",
+      padding: "8px 12px",
+      borderRadius: 12,
+      fontSize: 11,
+      cursor: "pointer",
+      lineHeight: 1.15,
+    }}
+    title="Send anonymous feedback"
+  >
+    Send
+    <br />
+    Feedback
+  </button>
+</div>
 
       {/* VERSION MODAL */}
       {isVersionOpen ? (
@@ -865,42 +1045,41 @@ function clearLeaderboards() {
 
           {isPractice ? null : (
             <div style={{ opacity: 0.6, marginTop: 8, fontSize: 12 }}>
-              (Timer starts on first click)
+              Click a tile: the 8 surrounding tiles change color.
             </div>
           )}
 
-          {isPractice ? null : (
-            <div
-              style={{
-                opacity: 0.9,
-                marginTop: 14,
-                display: "flex",
-                gap: 18,
-                justifyContent: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>Time</div>
-                <div style={{ fontSize: 20 }}>{formatTimeMs(elapsedMs)}</div>
-              </div>
+<div
+  style={{
+    opacity: 0.9,
+    marginTop: 14,
+    display: "flex",
+    gap: 18,
+    justifyContent: "center",
+    flexWrap: "wrap",
+  }}
+>
+  <div>
+    <div style={{ fontSize: 12, opacity: 0.7 }}>Time</div>
+    <div style={{ fontSize: 20 }}>{formatTimeMs(elapsedMs)}</div>
+  </div>
 
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>Clicks</div>
-                <div style={{ fontSize: 20 }}>{clicks}</div>
-              </div>
+  <div>
+    <div style={{ fontSize: 12, opacity: 0.7 }}>Clicks</div>
+    <div style={{ fontSize: 20 }}>{clicks}</div>
+  </div>
 
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>PAR</div>
-                <div style={{ fontSize: 20 }}>{par}</div>
-              </div>
+  <div>
+    <div style={{ fontSize: 12, opacity: 0.7 }}>PAR</div>
+    <div style={{ fontSize: 20 }}>{par}</div>
+  </div>
 
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>Efficiency</div>
-                <div style={{ fontSize: 20 }}>{efficiencyScore}</div>
-              </div>
-            </div>
-          )}
+  <div>
+    <div style={{ fontSize: 12, opacity: 0.7 }}>Efficiency</div>
+    <div style={{ fontSize: 20 }}>{efficiencyScore}</div>
+  </div>
+</div>
+
 
           <div style={{ marginTop: 10, opacity: 0.9 }}>
             {isSolved ? "✅ Solved" : ""}
@@ -962,37 +1141,46 @@ filter: "none",          }}
         }}
       />
 
-      <button
-        onClick={() => loadPracticeWithPar(practicePar)}
-        style={btnStyle}
-      >
-        Generate
-      </button>
-    </div>
+<button
+  onClick={() => loadPracticeWithPar(practicePar)}
+  style={btnStyle}
+>
+  Generate
+</button>
 
-    <button
-      onClick={() => {
-        setMode("normal");
-        loadPuzzle("random");
-      }}
-      style={backBtnStyle}
-    >
-      Back
-    </button>
+<button
+  onClick={resetToInitial}
+  style={resetBtnStyle}
+>
+  Reset
+</button>
+</div>
+
+
+
+<button
+  onClick={() => {
+    setMode("normal");
+    loadPuzzle("random");
+  }}
+  style={backBtnStyle}
+>
+  Back
+</button>
   </div>
 ) : (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
       <button onClick={() => loadPuzzle("easy")} style={btnStyle}>
-        Easy (PAR 3)
+        Easy
       </button>
 
       <button onClick={() => loadPuzzle("medium")} style={btnStyle}>
-        Medium (PAR 6)
+        Medium
       </button>
 
       <button onClick={() => loadPuzzle("random")} style={btnStyle}>
-        Difficult (PAR 10–60)
+        Difficult
       </button>
 
       <button onClick={resetToInitial} style={resetBtnStyle}>
@@ -1033,28 +1221,139 @@ filter: "none",          }}
   </div>
 )}
 
-        {/* LEADERBOARDS (normal only) */}
-        {isPractice ? null : (
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 12 }}>
-            <h2 style={{ margin: "0 0 6px 0", fontSize: 20, letterSpacing: 0.4, opacity: 0.9 }}>
-              Leaderboards
-            </h2>
+       {/* LEADERBOARDS (normal only) */}
+{isPractice ? null : (
+  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+      <h2 style={{ margin: "0 0 6px 0", fontSize: 20, letterSpacing: 0.4, opacity: 0.9 }}>
+        Leaderboards
+      </h2>
 
-            {renderTable("easy", "Local Leaderboard — Easy")}
-            {renderTable("medium", "Local Leaderboard — Medium")}
-            {renderTable("random", "Local Leaderboard — Random")}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={() => setLbView("local")}
+          style={{
+            ...btnStyle,
+            padding: "8px 10px",
+            fontSize: 12,
+            background: lbView === "local" ? "#fff" : "rgba(255,255,255,.06)",
+            color: lbView === "local" ? "#000" : "#fff",
+          }}
+        >
+          Local
+        </button>
+        <button
+          onClick={() => setLbView("global")}
+          style={{
+            ...btnStyle,
+            padding: "8px 10px",
+            fontSize: 12,
+            background: lbView === "global" ? "#fff" : "rgba(255,255,255,.06)",
+            color: lbView === "global" ? "#000" : "#fff",
+          }}
+        >
+          Global
+        </button>
+      </div>
+    </div>
 
-            <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
-              <button onClick={clearLeaderboards} style={btnStyle}>
-                Clear local scores
-              </button>
-            </div>
+    {lbView === "local" ? (
+      <>
+        {renderTable("easy", "Local Leaderboard — Easy")}
+        {renderTable("medium", "Local Leaderboard — Medium")}
+        {renderTable("random", "Local Leaderboard — Random")}
 
-            <div style={{ opacity: 0.55, fontSize: 12, marginTop: 10, textAlign: "center" }}>
-              Stored locally in this browser only.
-            </div>
-          </div>
-        )}
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
+          <button onClick={clearLeaderboards} style={btnStyle}>
+            Clear local scores
+          </button>
+        </div>
+
+        <div style={{ opacity: 0.55, fontSize: 12, marginTop: 10, textAlign: "center" }}>
+          Stored locally in this browser only.
+        </div>
+      </>
+    ) : (
+      <>
+        <div style={{ opacity: 0.65, fontSize: 12, marginTop: -4 }}>
+          {globalLbStatus === "loading" ? "Loading global scores..." : null}
+          {globalLbStatus === "error" ? "Global leaderboard unavailable." : null}
+        </div>
+        <div style={{ opacity: 0.65, fontSize: 12, marginTop: 6 }}>
+  {globalSaveStatus === "saving" ? "Saving score..." : null}
+  {globalSaveStatus === "saved" ? "Score saved." : null}
+  {globalSaveStatus === "error" ? "Score not saved." : null}
+</div>
+
+        {(() => {
+          const renderGlobalTable = (kind: Exclude<PuzzleKind, "solved">, title: string) => {
+            const rows = globalLb[kind];
+
+            return (
+              <div style={cardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ fontSize: 16, letterSpacing: 0.2 }}>{title}</div>
+                  <div style={{ opacity: 0.7, fontSize: 12 }}>Top {LEADERBOARD_SIZE}</div>
+                </div>
+
+                <div style={{ marginTop: 10, overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ opacity: 0.7, textAlign: "left" }}>
+                        <th style={{ padding: "8px 6px" }}>Rank</th>
+                        <th style={{ padding: "8px 6px" }}>Player</th>
+                        <th style={{ padding: "8px 6px" }}>Efficiency</th>
+                        <th style={{ padding: "8px 6px" }}>Time</th>
+                        <th style={{ padding: "8px 6px" }}>Clicks</th>
+                        <th style={{ padding: "8px 6px" }}>PAR</th>
+                        <th style={{ padding: "8px 6px" }}>Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} style={{ padding: "10px 6px", opacity: 0.7 }}>
+                            No entries yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        rows.map((r, i) => (
+                          <tr key={`${r.created_at}-${i}`} style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                            <td style={{ padding: "8px 6px" }}>{i + 1}</td>
+                            <td style={{ padding: "8px 6px" }}>{r.nickname ?? "anon"}</td>
+                            <td style={{ padding: "8px 6px" }}>{r.efficiency_score}</td>
+                            <td style={{ padding: "8px 6px" }}>{formatTimeMs(r.time_ms)}</td>
+                            <td style={{ padding: "8px 6px" }}>{r.clicks}</td>
+                            <td style={{ padding: "8px 6px" }}>{r.par}</td>
+                            <td style={{ padding: "8px 6px", opacity: 0.8 }}>
+                              {new Date(r.created_at).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          };
+
+          return (
+            <>
+              {renderGlobalTable("easy", "Global Leaderboard — Easy")}
+              {renderGlobalTable("medium", "Global Leaderboard — Medium")}
+              {renderGlobalTable("random", "Global Leaderboard — Random")}
+            </>
+          );
+        })()}
+
+        <div style={{ opacity: 0.55, fontSize: 12, marginTop: 10, textAlign: "center" }}>
+          Stored globally on server (nickname optional).
+        </div>
+      </>
+    )}
+  </div>
+)}
         <div
   style={{
     width: "100%",

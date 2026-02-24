@@ -6,8 +6,18 @@ export type VersionMeta = {
 
 export const VERSION_HISTORY: VersionMeta[] = [
   {
+  version: "0.5.0",
+  deployedAtIso: "AUTO",
+  notes: [
+    "Practice: PAR target now matches the selected value.",
+    "Practice: added Reset button.",
+    "UI: added quick links (Official Website + Devlog).",
+    "UI: replaced timer hint with a short move explanation.",
+  ],
+},
+{
     version: "0.4.0",
-    deployedAtIso: "AUTO",
+    deployedAtIso: "2026-02-22T17:44:38+01:00",
     notes: [
       "Math fix: generation now applies inverse Z3 moves (mod 3)",
       "PAR now reflects solver-consistent minimum clicks",
