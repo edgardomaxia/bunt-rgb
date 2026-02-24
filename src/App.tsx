@@ -252,9 +252,26 @@ const [globalSaveStatus, setGlobalSaveStatus] = useState<"idle" | "saving" | "sa
     color: "#fff",
     cursor: "pointer",
   };
-
+  const topLinkStyle: React.CSSProperties = {
+    background: "rgba(255,255,255,.08)",
+    border: "1px solid rgba(255,255,255,.15)",
+    color: "#fff",
+    padding: "8px 12px",
+    borderRadius: 12,
+    fontSize: 11,
+    cursor: "pointer",
+    lineHeight: 1.15,
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    width: 95,
+    height: 44,
+    boxSizing: "border-box",
+  };
   const practiceBtnStyle: React.CSSProperties = {
-    padding: "14px 18px",
+    padding: "10px 18px",
     borderRadius: 12,
     border: "3px solid rgba(255,255,255,.35)",
     background: "#000",
@@ -674,124 +691,7 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
         boxSizing: "border-box",
       }}
     >
- {/* HEADER LEFT: version + status */}
-<div
-  style={{
-    position: "absolute",
-    top: 22,
-    left: 30,
-    lineHeight: 1.25,
-    zIndex: 5,
-    textAlign: "left",
-  }}
->
-  <div
-    role="button"
-    tabIndex={0}
-    onClick={() => setIsVersionOpen(true)}
-    onKeyDown={(e) => {
-      if (e.key === "Enter" || e.key === " ") setIsVersionOpen(true);
-    }}
-    style={{
-      fontSize: 11,
-      opacity: 0.85,
-      cursor: "pointer",
-      textDecoration: "underline",
-      userSelect: "none",
-    }}
-    title="Open version history"
-  >
-    v{APP_VERSION}
-  </div>
 
-  <div style={{ fontSize: 10, opacity: 0.55 }}>
-    {APP_STATUS}
-  </div>
-
-
-</div>
-
-{/* HEADER RIGHT: links + feedback */}
-<div
-  style={{
-    position: "absolute",
-    top: 22,
-    right: 30,
-    width: 84,
-    zIndex: 5,
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-    alignItems: "stretch",
-  }}
->
-  <a
-    href="https://bunt-rgb.com/"
-    target="_blank"
-    rel="noopener noreferrer"
-    style={{
-      background: "rgba(255,255,255,.08)",
-      border: "1px solid rgba(255,255,255,.15)",
-      color: "#fff",
-      padding: "8px 12px",
-      borderRadius: 12,
-      fontSize: 11,
-      cursor: "pointer",
-      lineHeight: 1.15,
-      textDecoration: "none",
-      display: "inline-block",
-      textAlign: "center",
-    }}
-    title="Official website"
-  >
-    Official
-    <br />
-    Website
-  </a>
-
-  <a
-    href="https://www.youtube.com/@BuntRGB"
-    target="_blank"
-    rel="noopener noreferrer"
-    style={{
-      background: "rgba(255,255,255,.08)",
-      border: "1px solid rgba(255,255,255,.15)",
-      color: "#fff",
-      padding: "8px 12px",
-      borderRadius: 12,
-      fontSize: 11,
-      cursor: "pointer",
-      lineHeight: 1.15,
-      textDecoration: "none",
-      display: "inline-block",
-      textAlign: "center",
-    }}
-    title="Follow my devlog journey"
-  >
-    Follow my
-    <br />
-    Devlog
-  </a>
-
-  <button
-    onClick={() => setIsFeedbackOpen(true)}
-    style={{
-      background: "rgba(255,255,255,.08)",
-      border: "1px solid rgba(255,255,255,.15)",
-      color: "#fff",
-      padding: "8px 12px",
-      borderRadius: 12,
-      fontSize: 11,
-      cursor: "pointer",
-      lineHeight: 1.15,
-    }}
-    title="Send anonymous feedback"
-  >
-    Send
-    <br />
-    Feedback
-  </button>
-</div>
 
       {/* VERSION MODAL */}
       {isVersionOpen ? (
@@ -1033,13 +933,83 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
         }}
       >
         <div style={{ textAlign: "center", width: "100%" }}>
+          {/* TOP CENTER: version + status + links */}
+<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginTop: 6 }}>
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      fontSize: 11,
+      opacity: 0.75,
+    }}
+  >
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => setIsVersionOpen(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") setIsVersionOpen(true);
+      }}
+      style={{
+        cursor: "pointer",
+        textDecoration: "underline",
+        userSelect: "none",
+        opacity: 0.95,
+      }}
+      title="Open version history"
+    >
+      v{APP_VERSION}
+    </div>
+
+    <div style={{ opacity: 0.6 }}>•</div>
+
+    <div style={{ opacity: 0.85 }}>{APP_STATUS}</div>
+  </div>
+
+<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+  <a
+    href="https://bunt-rgb.com/"
+    target="_blank"
+    rel="noopener noreferrer"
+    style={topLinkStyle}
+    title="Official website"
+  >
+    Official
+    <br />
+    Website
+  </a>
+
+  <a
+    href="https://www.youtube.com/@BuntRGB"
+    target="_blank"
+    rel="noopener noreferrer"
+    style={topLinkStyle}
+    title="Follow my devlog journey"
+  >
+    Follow my
+    <br />
+    Devlog
+  </a>
+
+  <button
+    onClick={() => setIsFeedbackOpen(true)}
+    style={topLinkStyle}
+    title="Send anonymous feedback"
+  >
+    Send
+    <br />
+    Feedback
+  </button>
+</div>
+</div>
           {isPractice ? (
             <div style={{ letterSpacing: 2, fontSize: 14, opacity: 0.85, marginTop: 0 }}>
               PRACTICE
             </div>
           ) : null}
 
-          <h1 style={{ margin: "70px 0 0 0", fontSize: 66, letterSpacing: 1 }}>BUNT RGB</h1>
+          <h1 style={{ margin: "20px 0 0 0", fontSize: 66, letterSpacing: 1 }}>BUNT RGB</h1>
 
           <div style={{ opacity: 0.85, marginTop: 0, fontSize: 18 }}>
             Make all tiles the same color
@@ -1089,11 +1059,16 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
         </div>
 
         <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${SIZE}, 60px)`,
-            gap: "6px",
-filter: "none",          }}
+style={
+  {
+    "--tile": "clamp(44px, 12vw, 60px)",
+    "--gap": "clamp(4px, 1.6vw, 6px)",
+    display: "grid",
+    gridTemplateColumns: `repeat(${SIZE}, var(--tile))`,
+    gap: "var(--gap)",
+    filter: "none",
+  } as React.CSSProperties
+}
         >
           {grid.map((color, index) => (
             <button
@@ -1105,8 +1080,8 @@ filter: "none",          }}
                 setClicks((c) => c + 1);
               }}
               style={{
-                width: 60,
-                height: 60,
+                width: "var(--tile)",
+                height: "var(--tile)",
                 background: TILE_COLORS[color],
                 borderRadius: 8,
                 border: "none",
