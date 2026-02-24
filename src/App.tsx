@@ -1443,7 +1443,7 @@ boxSizing: "border-box",
     paddingBottom: 20,
   }}
 >
-  {BUILD_INFO.vercelEnv} • {BUILD_INFO.gitBranch} •{" "}
+  {BUILD_INFO.vercelEnv} • {BUILD_INFO.gitBranch} •EM•{" "}
   {BUILD_INFO.gitSha === "local"
     ? "local"
     : BUILD_INFO.gitSha.slice(0, 7)}{" "}
