@@ -717,11 +717,12 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
     position: "absolute",
     top: 22,
     right: 30,
+    width: 84,
     zIndex: 5,
     display: "flex",
     flexDirection: "column",
     gap: 8,
-    alignItems: "flex-end",
+    alignItems: "stretch",
   }}
 >
   <a
