@@ -694,16 +694,39 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
         minHeight: "100vh",
         width: "100vw",
         display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        background: isPractice ? "#1e1b20" : "#000",
+        justifyContent: isPractice ? "flex-start" : "center",
+        alignItems: isPractice ? "flex-start" : "center",
+        background: isPractice ? "#111111" : "#000",
         color: "#fff",
         fontFamily: "system-ui",
-        padding: 16,
-        boxSizing: "border-box",
+        padding: 6,
+paddingTop: isPractice ? 40 : 6,
+boxSizing: "border-box",
       }}
     >
-
+{isPractice ? (
+  <div
+    style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 28,
+      background: "rgba(255,255,255,.14)",
+      borderBottom: "1px solid rgba(255,255,255,.18)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      letterSpacing: 2,
+      fontSize: 12,
+      fontWeight: 800,
+      zIndex: 40,
+      userSelect: "none",
+    }}
+  >
+    PRACTICE
+  </div>
+) : null}
 
       {/* VERSION MODAL */}
       {isVersionOpen ? (
@@ -1051,13 +1074,9 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
   </button>
 </div>
 </div>
-          {isPractice ? (
-            <div style={{ letterSpacing: 2, fontSize: 14, opacity: 0.85, marginTop: 0 }}>
-              PRACTICE
-            </div>
-          ) : null}
 
-          <h1 style={{ margin: "20px 0 0 0", fontSize: 66, letterSpacing: 1 }}>BUNT RGB</h1>
+
+          <h1 style={{ margin: "3px 0 0 0", fontSize: 66, letterSpacing: 1 }}>BUNT RGB</h1>
 
           <div style={{ opacity: 0.85, marginTop: 0, fontSize: 18 }}>
             Make all tiles the same color
@@ -1130,7 +1149,7 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
       padding: 0,
       cursor: "pointer",
       textAlign: "center",
-      zIndex: 1,
+      zIndex: 199,
       display: "block",
     }}
   >
