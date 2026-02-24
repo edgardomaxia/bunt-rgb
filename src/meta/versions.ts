@@ -13,7 +13,10 @@ export const VERSION_HISTORY: VersionMeta[] = [
     "Practice: added Reset button.",
     "UI: added quick links (Official Website + Devlog).",
     "UI: replaced timer hint with a short move explanation.",
-  ],
+    "Added contextual help: '?' button near the grid opens a mini help modal.",
+  "Removed the inline hint text under the title (moved into the help modal).",
+  "Improved modals UX: consistent top-right close '×' (Version history / Share / Feedback).",
+],
 },
 {
     version: "0.4.0",

@@ -187,7 +187,7 @@ const [practicePar, setPracticePar] = useState<number>(5);
   const [isVersionOpen, setIsVersionOpen] = useState(false);
 const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 const [isShareOpen, setIsShareOpen] = useState(false);
-
+const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [puzzleKind, setPuzzleKind] = useState<PuzzleKind>(() => initialRun?.puzzleKind ?? "random");
 
 const [par, setPar] = useState<number>(() => {
@@ -302,7 +302,18 @@ const [globalSaveStatus, setGlobalSaveStatus] = useState<"idle" | "saving" | "sa
     background: "#fff",
     color: "#000",
   };
-
+const modalCloseStyle: React.CSSProperties = {
+  position: "absolute",
+  top: 12,
+  right: 14,
+  background: "transparent",
+  border: "none",
+  color: "#fff",
+  fontSize: 18,
+  cursor: "pointer",
+  opacity: 0.75,
+  padding: 4,
+};
 
 
 function getShareText() {
@@ -416,12 +427,13 @@ useEffect(() => {
       setIsVersionOpen(false);
       setIsFeedbackOpen(false);
       setIsShareOpen(false);
+      setIsHelpOpen(false);
     }
   }
 
   window.addEventListener("keydown", onKeyDown);
 
-  const anyModalOpen = isVersionOpen || isFeedbackOpen || isShareOpen;
+  const anyModalOpen = isVersionOpen || isFeedbackOpen || isShareOpen || isHelpOpen;
   const prevOverflow = document.body.style.overflow;
   if (anyModalOpen) document.body.style.overflow = "hidden";
 
@@ -709,35 +721,28 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
           }}
         >
           <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(680px, 92vw)",
-              maxHeight: "min(760px, 86vh)",
-              overflow: "auto",
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,.14)",
-              background: "rgba(15,15,15,.96)",
-              boxShadow: "0 20px 80px rgba(0,0,0,.6)",
-              padding: 16,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-              <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Version history</div>
-              <button
-                onClick={() => setIsVersionOpen(false)}
-                style={{
-                  border: "1px solid rgba(255,255,255,.14)",
-                  background: "rgba(255,255,255,.06)",
-                  color: "#fff",
-                  borderRadius: 12,
-                  padding: "8px 10px",
-                  cursor: "pointer",
-                  fontSize: 12,
-                }}
-              >
-                Close
-              </button>
-            </div>
+  onClick={(e) => e.stopPropagation()}
+  style={{
+    width: "min(680px, 92vw)",
+    maxHeight: "min(760px, 86vh)",
+    overflow: "auto",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,.14)",
+    background: "rgba(15,15,15,.96)",
+    boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+    padding: 16,
+    position: "relative",
+  }}
+>
+  <button
+  onClick={() => setIsVersionOpen(false)}
+  style={modalCloseStyle}
+  aria-label="Close"
+>
+  ×
+</button>
+  
+   <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Version history</div>           
 
             <div style={{ opacity: 0.65, fontSize: 12, marginTop: 6 }}>
               Click outside or press ESC to close.
@@ -798,25 +803,17 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
         background: "rgba(15,15,15,.96)",
         boxShadow: "0 20px 80px rgba(0,0,0,.6)",
         padding: 16,
+        position: "relative",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-        <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Share</div>
-        <button
-          onClick={() => setIsShareOpen(false)}
-          style={{
-            border: "1px solid rgba(255,255,255,.14)",
-            background: "rgba(255,255,255,.06)",
-            color: "#fff",
-            borderRadius: 12,
-            padding: "8px 10px",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
-        >
-          Close
-        </button>
-      </div>
+      <button
+  onClick={() => setIsShareOpen(false)}
+  style={modalCloseStyle}
+  aria-label="Close"
+>
+  ×
+</button>
+<div style={{ fontSize: 18, letterSpacing: 0.2 }}>Share</div>
 
       <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10, whiteSpace: "pre-wrap" }}>
         {getShareText()}
@@ -907,8 +904,16 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
               overflow: "hidden",
               background: "#fff",
               boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+               position: "relative",
             }}
           >
+            <button
+              onClick={() => setIsFeedbackOpen(false)}
+              style={modalCloseStyle}
+              aria-label="Close"
+            >
+              ×
+            </button>
             <iframe
               src="https://tally.so/r/xXpB15"
               width="100%"
@@ -917,9 +922,52 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
               style={{ border: "none" }}
               title="BUNT RGB Anonymous Feedback"
             />
+            
           </div>
         </div>
       ) : null}
+
+{/* HELP MODAL */}
+{isHelpOpen ? (
+  <div
+    onClick={() => setIsHelpOpen(false)}
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,.6)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 16,
+      zIndex: 59,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: "min(420px, 92vw)",
+        borderRadius: 16,
+        border: "1px solid rgba(255,255,255,.14)",
+        background: "rgba(15,15,15,.96)",
+        boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+        padding: 16,
+        position: "relative",
+      }}
+    >
+      <button onClick={() => setIsHelpOpen(false)} style={modalCloseStyle} aria-label="Close">
+        ×
+      </button>
+
+      <div style={{ fontSize: 18, letterSpacing: 0.2 }}>How it works</div>
+
+      <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10 }}>
+        Click a tile: the 8 surrounding tiles change color.
+      </div>
+
+      
+    </div>
+  </div>
+) : null}
 
       {/* GAME */}
       <div
@@ -1015,11 +1063,7 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
             Make all tiles the same color
           </div>
 
-          {isPractice ? null : (
-            <div style={{ opacity: 0.6, marginTop: 8, fontSize: 12 }}>
-              Click a tile: the 8 surrounding tiles change color.
-            </div>
-          )}
+
 
 <div
   style={{
@@ -1057,42 +1101,79 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
             {isSolved ? "✅ Solved" : ""}
           </div>
         </div>
+<div
+  style={
+    {
+      position: "relative",
+      display: "inline-block",
+    } as React.CSSProperties
+  }
+>
+  {/* HELP BUTTON (fuori, a sinistra) */}
+  <button
+    onClick={() => setIsHelpOpen(true)}
+    aria-label="Help"
+    title="Help"
+    style={{
+      position: "absolute",
+      top: 6,
+      left: -58, // <-- spinge fuori a sinistra
+      width: 32,
+      height: 32,
+      borderRadius: 999,
+      border: "1px solid rgba(255,255,255,.35)",
+      background: "rgba(0,0,0,.55)",
+      color: "#fff",
+      fontSize: 18,
+      fontWeight: 800,
+      lineHeight: "32px",
+      padding: 0,
+      cursor: "pointer",
+      textAlign: "center",
+      zIndex: 999,
+      display: "block",
+    }}
+  >
+    {"?"}
+  </button>
 
-        <div
-style={
-  {
-    "--tile": "clamp(44px, 12vw, 60px)",
-    "--gap": "clamp(4px, 1.6vw, 6px)",
-    display: "grid",
-    gridTemplateColumns: `repeat(${SIZE}, var(--tile))`,
-    gap: "var(--gap)",
-    filter: "none",
-  } as React.CSSProperties
-}
-        >
-          {grid.map((color, index) => (
-            <button
-              key={index}
-              onClick={() => {
-                if (isSolved) return;
-                if (!isPractice) startTimerIfNeeded();
-                setGrid((prev) => applyMove(prev, index));
-                setClicks((c) => c + 1);
-              }}
-              style={{
-                width: "var(--tile)",
-                height: "var(--tile)",
-                background: TILE_COLORS[color],
-                borderRadius: 8,
-                border: "none",
-                padding: 0,
-                cursor: isSolved ? "default" : "pointer",
-                outline: "1px solid rgba(255,255,255,.08)",
-              }}
-              aria-label={`cell-${index}`}
-            />
-          ))}
-        </div>
+  {/* GRID */}
+  <div
+    style={
+      {
+        "--tile": "clamp(44px, 12vw, 60px)",
+        "--gap": "clamp(4px, 1.6vw, 6px)",
+        display: "grid",
+        gridTemplateColumns: `repeat(${SIZE}, var(--tile))`,
+        gap: "var(--gap)",
+        filter: "none",
+      } as React.CSSProperties
+    }
+  >
+    {grid.map((color, index) => (
+      <button
+        key={index}
+        onClick={() => {
+          if (isSolved) return;
+          if (!isPractice) startTimerIfNeeded();
+          setGrid((prev) => applyMove(prev, index));
+          setClicks((c) => c + 1);
+        }}
+        style={{
+          width: "var(--tile)",
+          height: "var(--tile)",
+          background: TILE_COLORS[color],
+          borderRadius: 8,
+          border: "none",
+          padding: 0,
+          cursor: isSolved ? "default" : "pointer",
+          outline: "1px solid rgba(255,255,255,.08)",
+        }}
+        aria-label={`cell-${index}`}
+      />
+    ))}
+  </div>
+</div>
 
 {/* BUTTONS */}
 {isPractice ? (
@@ -1141,7 +1222,9 @@ style={
     loadPuzzle("random");
   }}
   style={backBtnStyle}
+  
 >
+  
   Back
 </button>
   </div>
