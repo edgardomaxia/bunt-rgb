@@ -575,17 +575,18 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
     const res = await fetch("/api/score", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token: runToken,
-        timeMs: Math.round(elapsedMs),
-        clicks,
-        par,
-        nickname: "claude", // poi lo rendiamo input
-        appVersion:
-          BUILD_INFO?.gitSha === "local"
-            ? "local"
-            : (BUILD_INFO?.gitSha?.slice(0, 7) ?? "unknown"),
-      }),
+     body: JSON.stringify({
+  token: runToken,
+  mode: kind,
+  timeMs: Math.round(elapsedMs),
+  clicks,
+  par,
+  nickname: "claude", // poi lo rendiamo input
+  appVersion:
+    BUILD_INFO?.gitSha === "local"
+      ? "local"
+      : (BUILD_INFO?.gitSha?.slice(0, 7) ?? "unknown"),
+}),
     });
 
     if (!res.ok) throw new Error(`score_http_${res.status}`);
