@@ -1268,6 +1268,18 @@ useEffect(() => {
                   box-shadow: 0 8px 18px rgba(0,0,0,.45);
                 }
               `}</style>
+                    </div>
+
+            {/* LEADERBOARDS (Practice) */}
+            <div style={{ width: "min(560px, 92vw)", marginTop: 6 }}>
+<Leaderboards
+  visible={true}
+  lastSolvedRun={lastSolvedRun}
+  practicePar={practicePar}
+  onPracticeParChange={setPracticePar}
+  defaultView="local"
+  lockView="local"
+/>
             </div>
 
             <button
@@ -1322,13 +1334,7 @@ useEffect(() => {
           </div>
         )}
 
-{/* LEADERBOARDS (always mounted so Practice saves too; UI hidden in practice) */}
-<Leaderboards
-  visible={!isPractice}
-  lastSolvedRun={lastSolvedRun}
-  practicePar={practicePar}
-  onPracticeParChange={setPracticePar}
-/>
+
 
         {/* FOOTER BUILD INFO */}
         <div

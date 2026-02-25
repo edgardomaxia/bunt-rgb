@@ -102,11 +102,13 @@ export default function Leaderboards(props: {
   lastSolvedRun: LastSolvedRun | null;
   practicePar: number;
   onPracticeParChange: (p: number) => void;
-}) {
-  const { visible, lastSolvedRun, practicePar, onPracticeParChange } = props;
 
-  const [view, setView] = useState<"global" | "local">("global"); // default GLOBAL
-  // Leaderboards keeps a local copy, but stays synced with App (two-way)
+  // NEW
+  defaultView?: "global" | "local";
+  lockView?: "global" | "local"; // se "local" -> Global disabilitato e sempre su Local
+}) {
+  const { visible, lastSolvedRun, practicePar, onPracticeParChange, defaultView, lockView } = props;
+  const [view, setView] = useState<"global" | "local">(lockView ?? defaultView ?? "local");  // Leaderboards keeps a local copy, but stays synced with App (two-way)
   const [practiceParLocal, setPracticeParLocal] = useState<number>(practicePar);
 
   const [local, setLocal] = useState<LocalStore>(() =>
@@ -122,10 +124,11 @@ export default function Leaderboards(props: {
     "idle"
   );
 
-  // Sync from App -> Leaderboards (slider in Practice drives the filter)
+  // NEW: lock view (e.g. force Local while Global is empty / not deployed)
   useEffect(() => {
-    setPracticeParLocal(practicePar);
-  }, [practicePar]);
+    if (!lockView) return;
+    setView(lockView);
+  }, [lockView]);
 
   // 1) SAVE LOCAL on solved run (Daily + Practice-by-PAR)
   useEffect(() => {
@@ -523,21 +526,30 @@ export default function Leaderboards(props: {
 
         <div style={{ display: "flex", gap: 8 }}>
           <button
-            onClick={() => setView("global")}
+            onClick={() => {
+              if (lockView === "local") return;
+              setView("global");
+            }}
+            disabled={lockView === "local"}
             style={{
               ...btnStyle,
               background: view === "global" ? "#fff" : "rgba(255,255,255,.06)",
               color: view === "global" ? "#000" : "#fff",
+              opacity: lockView === "local" ? 0.35 : 1,
+              cursor: lockView === "local" ? "not-allowed" : "pointer",
             }}
           >
             Global
           </button>
-          <button
+                    <button
             onClick={() => setView("local")}
+            disabled={lockView === "local"}
             style={{
               ...btnStyle,
               background: view === "local" ? "#fff" : "rgba(255,255,255,.06)",
               color: view === "local" ? "#000" : "#fff",
+              opacity: lockView === "local" ? 0.85 : 1,
+              cursor: lockView === "local" ? "default" : "pointer",
             }}
           >
             Local
@@ -547,8 +559,10 @@ export default function Leaderboards(props: {
 
       {view === "local" ? (
         <>
-          {renderLocalDaily()}
           {renderLocalPractice()}
+          {renderLocalDaily()}
+          
+          
 
           <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
             <button onClick={clearLocal} style={btnStyle}>
