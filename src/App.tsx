@@ -4,8 +4,6 @@ import {
   SIZE,
   applyMove,
   solvedGrid,
-  generateEasyRealPar3Distinct,
-  generateMediumPlanted,
   generateRandomRealPar,
   gridFromSolution,
   randomTargetColor,
@@ -75,11 +73,7 @@ function formatTimeMs(ms: number) {
   const mmm = String(millis).padStart(3, "0");
   return `${mm}:${ss}.${mmm}`;
 }
-function gridIsSolved(g: Color[]) {
-  if (!Array.isArray(g) || g.length === 0) return false;
-  const first = g[0];
-  return g.every((c) => c === first);
-}
+
 function emptyLeaderboards(): Leaderboards {
   return { easy: [], medium: [], random: [], daily: [] };
 }
@@ -314,9 +308,7 @@ const [globalLb, setGlobalLb] = useState<GlobalLeaderboards>(() => ({
 const [globalLbStatus, setGlobalLbStatus] = useState<
   "idle" | "loading" | "ready" | "error"
 >("idle");
-const [runToken, setRunToken] = useState<string | null>(null);
-const [globalSaveStatus, setGlobalSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-// Auto-load Daily on first mount (normal mode)
+const [globalSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");// Auto-load Daily on first mount (normal mode)
 useEffect(() => {
   if (typeof window === "undefined") return;
   if (mode !== "normal") return;
@@ -586,50 +578,8 @@ const anyModalOpen =
     window.removeEventListener("keydown", onKeyDown);
     document.body.style.overflow = prevOverflow;
   };
-}, [isVersionOpen, isFeedbackOpen, isShareOpen, isHelpOpen, isGlobalOptOpen]);function loadPuzzle(kind: PuzzleKind) {
-  let nextGrid: Color[];
-  let nextPar: number;
+}, [isVersionOpen, isFeedbackOpen, isShareOpen, isHelpOpen, isGlobalOptOpen]);
 
-if (kind === "easy") {
-  const g = generateEasyRealPar3Distinct();
-
-  
-
-  nextGrid = g.grid;
-  nextPar = g.par;
-} else if (kind === "medium") {
-    const g = generateMediumPlanted(6);
-    nextGrid = g.grid;
-    nextPar = g.par; // real min-par (often ~6, can vary)
-  } else if (kind === "random") {
-    const g = generateRandomRealPar();
-    nextGrid = g.grid;
-    nextPar = g.par; // real min-par for that random puzzle
-  } else {
-    // solved
-    nextGrid = solvedGrid("red");
-    nextPar = 0;
-  }
-
-  setPuzzleKind(kind);
-  setPar(nextPar);
-  setInitialGrid(nextGrid.slice());
-  setGrid(nextGrid);
-  setClicks(0);
-  setElapsedMs(0);
-
-  stopTimer();
-  startTimeRef.current = null;
-  savedThisRunRef.current = false;
-
-  // ensure Random never persists across refresh
-  if (kind === "random") clearRunState();
-  if (kind === "easy" || kind === "medium" || kind === "random") {
-  mintRunToken(kind);
-} else {
-  setRunToken(null);
-}
-}
 async function loadDaily() {
   const todayId = utcDailyId(); // UTC date => same for everyone
 
@@ -688,8 +638,6 @@ async function loadDaily() {
     startTimeRef.current = null;
     savedThisRunRef.current = false;
 
-    // token GLOBAL: for now we reuse random token
-    mintRunToken("random");
     return;
   } catch (e) {
     // Fallback A: cache (if same day)
@@ -706,7 +654,7 @@ async function loadDaily() {
       startTimeRef.current = null;
       savedThisRunRef.current = false;
 
-      mintRunToken("random");
+
       return;
     }
 
@@ -735,7 +683,7 @@ async function loadDaily() {
       startTimeRef.current = null;
       savedThisRunRef.current = false;
 
-      mintRunToken("random");
+
       return;
     } catch {
       const fallback = solvedGrid("red");
@@ -759,7 +707,7 @@ async function loadDaily() {
       startTimeRef.current = null;
       savedThisRunRef.current = false;
 
-      mintRunToken("random");
+
       return;
     }
   }
@@ -854,70 +802,9 @@ async function fetchGlobal(kind: GlobalKind) {
   }
 }
 
-async function mintRunToken(kind: GlobalKind) {
-    try {
-    setGlobalSaveStatus("idle");
 
-    const res = await fetch("/api/run-token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: kind }),
-    });
 
-    if (!res.ok) throw new Error(`run-token_http_${res.status}`);
 
-    const data = (await res.json()) as { token: string };
-    setRunToken(typeof data.token === "string" ? data.token : null);
-  } catch {
-    setRunToken(null);
-  }
-}
-
-async function submitGlobalScore(kind: GlobalKind) {
-    if (!runToken) return;
-    
-  // prevent polluting global leaderboard from preview/dev builds
-const allowGlobalSave =
-  BUILD_INFO?.vercelEnv === "production" || BUILD_INFO?.gitBranch === "provvisorio-daily";
-
-if (!allowGlobalSave) return;
-  const appVer =
-    BUILD_INFO?.gitSha === "local" ? "local" : (BUILD_INFO?.gitSha?.slice(0, 7) ?? "unknown");
-  if (appVer.includes("test") || appVer.includes("local")) return;
-  try {
-    setGlobalSaveStatus("saving");
-
-    const res = await fetch("/api/score", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-     body: JSON.stringify({
-  token: runToken,
-  mode: kind,
-  timeMs: Math.round(elapsedMs),
-  clicks,
-  par,
-nickname: nickname.trim() ? nickname.trim() : null,
-appVersion: appVer,
-}),
-    });
-
-    if (!res.ok) throw new Error(`score_http_${res.status}`);
-
-    const data = await res.json();
-    if (!data?.ok) throw new Error("score_not_ok");
-
-    setGlobalSaveStatus("saved");
-
-    // refresh global view if you're looking at it
-    if (lbView === "global") {
-      fetchGlobal("easy");
-      fetchGlobal("medium");
-      fetchGlobal("random");
-    }
-  } catch {
-    setGlobalSaveStatus("error");
-  }
-}
 function renderTable(kind: LocalKind, title: string) {
       const rows = leaderboards[kind];
 
