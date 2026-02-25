@@ -1,4 +1,4 @@
-import type { Color, PuzzleKind } from "./types";
+import type { Color, PuzzleKind } from "./types.js";
 
 export const SIZE = 5;
 
