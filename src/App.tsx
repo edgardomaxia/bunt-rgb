@@ -16,6 +16,7 @@ import {
 import { APP_VERSION, APP_STATUS } from "./meta/appMeta";
 import { VERSION_HISTORY } from "./meta/versions";
 import { BUILD_INFO } from "./meta/buildInfo";
+import { utcDailyId, dailyNumberFromId, nextDailyUtcMs, formatCountdown } from "./meta/dailyMeta";
 
 const LEADERBOARD_SIZE = 10;
 const STORAGE_KEY = "bunt_rgb_leaderboards_v1";
@@ -166,13 +167,7 @@ function loadDailyState(): DailyState | null {
 function saveDailyState(state: DailyState) {
   localStorage.setItem(DAILY_STATE_KEY, JSON.stringify(state));
 }
-function utcDailyId(d: Date = new Date()) {
-  // YYYY-MM-DD in UTC (same for everyone)
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+// (moved) utcDailyId is imported from ./meta/dailyMeta
 function sortEntries(a: LeaderboardEntry, b: LeaderboardEntry) {
   // 1) score desc, 2) time asc, 3) clicks asc
   if (b.score !== a.score) return b.score - a.score;
@@ -228,9 +223,16 @@ export default function App() {
   if (initialRun) return null;
   return generateRandomRealPar();
 }, [initialRun]);
-
 const [mode, setMode] = useState<Mode>("normal");
 const [practicePar, setPracticePar] = useState<number>(5);
+
+// DAILY LABEL + COUNTDOWN STATE
+const [dailyId, setDailyId] = useState<string>(() => utcDailyId());
+const [dailyNum, setDailyNum] = useState<number>(() => dailyNumberFromId(utcDailyId()));
+const [nextDailyIn, setNextDailyIn] = useState<string>(() =>
+  formatCountdown(nextDailyUtcMs(new Date()) - Date.now())
+);
+
   const [isVersionOpen, setIsVersionOpen] = useState(false);
 const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 const [isShareOpen, setIsShareOpen] = useState(false);
@@ -269,8 +271,43 @@ const [globalLbStatus, setGlobalLbStatus] = useState<
 >("idle");
 const [runToken, setRunToken] = useState<string | null>(null);
 const [globalSaveStatus, setGlobalSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+// Auto-load Daily on first mount (normal mode)
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  if (mode !== "normal") return;
 
+  // If we already have a stored run-state, keep it.
+  if (initialRun) return;
 
+  loadDaily();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+// DAILY: update countdown every second + detect day rollover (UTC)
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const tick = () => {
+    const now = Date.now();
+    const msLeft = nextDailyUtcMs(new Date()) - now;
+    setNextDailyIn(formatCountdown(msLeft));
+
+    const idNow = utcDailyId();
+    if (idNow !== dailyId) {
+      setDailyId(idNow);
+      setDailyNum(dailyNumberFromId(idNow));
+
+      // auto-refresh daily only if user is currently on Daily in normal mode
+      if (mode === "normal" && puzzleKind === "daily") {
+        loadDaily();
+      }
+    }
+  };
+
+  tick();
+  const t = window.setInterval(tick, 1000);
+  return () => window.clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [dailyId, mode, puzzleKind]);
   // Timer refs
   const startTimeRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
@@ -610,7 +647,7 @@ setPuzzleKind("daily");
   }
 }
 function loadPracticeWithPar(parTarget: number) {
-  const safePar = clamp(Math.floor(parTarget), 1, 100);
+  const safePar = clamp(Math.floor(parTarget), 1, 20);
   
   // Strategy: "plant" exactly N distinct 1-clicks to create a puzzle,
   // then compute its REAL min-PAR (may be <= planted count).
@@ -720,7 +757,13 @@ async function mintRunToken(kind: GlobalKind) {
 
 async function submitGlobalScore(kind: GlobalKind) {
     if (!runToken) return;
+    
+  // prevent polluting global leaderboard from preview/dev builds
+  if (BUILD_INFO?.vercelEnv && BUILD_INFO.vercelEnv !== "production") return;
 
+  const appVer =
+    BUILD_INFO?.gitSha === "local" ? "local" : (BUILD_INFO?.gitSha?.slice(0, 7) ?? "unknown");
+  if (appVer.includes("test") || appVer.includes("local")) return;
   try {
     setGlobalSaveStatus("saving");
 
@@ -734,10 +777,7 @@ async function submitGlobalScore(kind: GlobalKind) {
   clicks,
   par,
   nickname: "claude", // poi lo rendiamo input
-  appVersion:
-    BUILD_INFO?.gitSha === "local"
-      ? "local"
-      : (BUILD_INFO?.gitSha?.slice(0, 7) ?? "unknown"),
+appVersion: appVer,
 }),
     });
 
@@ -1201,9 +1241,17 @@ boxSizing: "border-box",
 
           <h1 style={{ margin: "3px 0 0 0", fontSize: 66, letterSpacing: 1 }}>BUNT RGB</h1>
 
-          <div style={{ opacity: 0.85, marginTop: 0, fontSize: 18 }}>
-            Make all tiles the same color
-          </div>
+<div style={{ opacity: 0.8, marginTop: -10, fontSize: 27, letterSpacing: 2 }}>
+  A DAILY PUZZLE GAME
+</div>
+
+<div style={{ opacity: 0.7, marginTop: -3, fontSize: 11, letterSpacing: 2 }}>
+  DAILY SCRAMBLE #{String(dailyNum).padStart(4, "0")} • NEXT IN {nextDailyIn}
+</div>
+
+<div style={{ opacity: 0.85, marginTop: 12, fontSize: 18 }}>
+  Make all tiles the same color
+</div>
 
 
 
@@ -1320,78 +1368,117 @@ boxSizing: "border-box",
 {/* BUTTONS */}
 {isPractice ? (
   <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-    <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "center", flexWrap: "wrap" }}>
-      <div style={{ fontSize: 14, opacity: 0.85 }}>PAR</div>
+    <div
+      style={{
+        width: "min(520px, 92vw)",
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,.10)",
+        background: "rgba(255,255,255,.04)",
+        padding: 12,
+      }}
+    >
 
-      <input
-        type="number"
-        min={1}
-        max={100}
-        value={practicePar}
-        onChange={(e) => setPracticePar(Number(e.target.value))}
-        style={{
-          width: 90,
-          padding: "10px 12px",
-          borderRadius: 10,
-          border: "1px solid rgba(255,255,255,.18)",
-          background: "rgba(255,255,255,.06)",
-          color: "#fff",
-          fontSize: 14,
-          outline: "none",
-        }}
-      />
 
-<button
-  onClick={() => loadPracticeWithPar(practicePar)}
-  style={btnStyle}
->
-  Generate
-</button>
+      <div style={{ marginTop: 10, textAlign: "center", fontSize: 16, fontWeight: 900, letterSpacing: 0.6 }}>
+        PAR = {practicePar}
+      </div>
 
-<button
-  onClick={resetToInitial}
-  style={resetBtnStyle}
->
-  Reset
-</button>
+<div style={{ marginTop: 10 }}>
+  <input
+    className="parSlider"
+    type="range"
+    min={1}
+    max={20}
+    step={1}
+    value={practicePar}
+    onChange={(e) => setPracticePar(Number(e.target.value))}
+    aria-label="Practice difficulty (PAR)"
+    style={{
+      ["--track" as any]: `hsl(${Math.round(
+        120 - ((practicePar - 1) / 19) * 120
+      )} 100% 45%)`,
+    }}
+  />
+
+  <div
+    style={{
+      marginTop: 8,
+      display: "flex",
+      justifyContent: "space-between",
+      fontSize: 12,
+      letterSpacing: 2,
+      fontWeight: 800,
+      opacity: 0.75,
+      userSelect: "none",
+    }}
+  >
+    <div>EASY</div>
+    <div>HARD</div>
+  </div>
 </div>
 
+      <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+        <button onClick={() => loadPracticeWithPar(practicePar)} style={btnStyle}>
+          Generate
+        </button>
 
+        <button onClick={resetToInitial} style={resetBtnStyle}>
+          Reset
+        </button>
+      </div>
 
-<button
-  onClick={() => {
-    setMode("normal");
-    loadPuzzle("random");
-  }}
-  style={backBtnStyle}
-  
->
-  
-  Back
-</button>
+      <style>{`
+        .parSlider{
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--track, #00d500);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
+}
+
+.parSlider::-webkit-slider-thumb{
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2px solid rgba(0,0,0,.65);
+  box-shadow: 0 8px 18px rgba(0,0,0,.45);
+}
+
+.parSlider::-moz-range-thumb{
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 2px solid rgba(0,0,0,.65);
+  box-shadow: 0 8px 18px rgba(0,0,0,.45);
+}
+      `}</style>
+    </div>
+
+    <button
+      onClick={() => {
+        setMode("normal");
+        loadPuzzle("random");
+      }}
+      style={backBtnStyle}
+    >
+      Back
+    </button>
   </div>
 ) : (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-      <button onClick={loadDaily} style={btnStyle}>
-  Daily
-</button>
-<button onClick={() => loadPuzzle("easy")} style={btnStyle}>
-        Easy
-      </button>
-
-      <button onClick={() => loadPuzzle("medium")} style={btnStyle}>
-        Medium
-      </button>
-
-      <button onClick={() => loadPuzzle("random")} style={btnStyle}>
-        Difficult
-      </button>
-
-      <button onClick={resetToInitial} style={resetBtnStyle}>
-        Reset
-      </button>
-    </div>
+<div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+  <button onClick={resetToInitial} style={resetBtnStyle}>
+    Reset
+  </button>
+</div>
 
     <div style={{ display: "flex", gap: 10, justifyContent: "center", width: "100%" }}>
       <button
@@ -1464,6 +1551,7 @@ boxSizing: "border-box",
 
     {lbView === "local" ? (
       <>
+       {renderTable("daily", "Local Leaderboard — Daily")}
         {renderTable("easy", "Local Leaderboard — Easy")}
         {renderTable("medium", "Local Leaderboard — Medium")}
         {renderTable("random", "Local Leaderboard — Random")}
