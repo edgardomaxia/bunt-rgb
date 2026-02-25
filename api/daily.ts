@@ -2,10 +2,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 
-// NIENTE import statico di dailyGen qui: lo carichiamo dentro l'handler
-
 type DailyRow = {
   daily_id: string;
+  daily_num: number;
   seed: string;
   par: number;
   grid: unknown; // jsonb
@@ -25,16 +24,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       auth: { persistSession: false },
     });
 
-    // dynamic import (ESM-safe on Vercel)
+    // dynamic import (keeps bundler happy with Node16/ESM)
     const { generateDailyToday } = await import("./_lib/dailyGen.js");
     const g = generateDailyToday();
-    const dailyId = g.dailyId;
 
     // 1) try read
     const { data: existing, error: readErr } = await supabase
       .from("daily_puzzles")
       .select("*")
-      .eq("daily_id", dailyId)
+      .eq("daily_id", g.dailyId)
       .maybeSingle<DailyRow>();
 
     if (readErr) throw readErr;
@@ -43,6 +41,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         ok: true,
         dailyId: existing.daily_id,
+        dailyNum: existing.daily_num,
+        dailyNumStr: String(existing.daily_num).padStart(4, "0"),
         seed: existing.seed,
         par: existing.par,
         grid: existing.grid,
@@ -52,6 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 2) insert once
     const payload = {
       daily_id: g.dailyId,
+      daily_num: g.dailyNum,
       seed: g.seed,
       par: g.par,
       grid: g.grid,
@@ -64,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { data: retry, error: retryErr } = await supabase
         .from("daily_puzzles")
         .select("*")
-        .eq("daily_id", dailyId)
+        .eq("daily_id", g.dailyId)
         .maybeSingle<DailyRow>();
 
       if (retryErr || !retry) throw insErr;
@@ -72,6 +73,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         ok: true,
         dailyId: retry.daily_id,
+        dailyNum: retry.daily_num,
+        dailyNumStr: String(retry.daily_num).padStart(4, "0"),
         seed: retry.seed,
         par: retry.par,
         grid: retry.grid,
@@ -81,6 +84,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       ok: true,
       dailyId: g.dailyId,
+      dailyNum: g.dailyNum,
+      dailyNumStr: g.dailyNumStr,
       seed: g.seed,
       par: g.par,
       grid: g.grid,

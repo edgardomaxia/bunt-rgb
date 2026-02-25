@@ -12,7 +12,32 @@ function utcDailyId(d: Date = new Date()) {
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+// Daily progressive number (#0001..#9999)
+// Epoch day = day #0001 (UTC). Change only if you want to reset numbering.
+const DAILY_EPOCH_UTC = "2026-02-25"; // #0001
 
+function utcMidnightMsFromId(id: string) {
+  // id = "YYYY-MM-DD"
+  const [y, m, d] = id.split("-").map((n) => Number(n));
+  return Date.UTC(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, 0);
+}
+
+function diffDaysUTC(fromId: string, toId: string) {
+  const a = utcMidnightMsFromId(fromId);
+  const b = utcMidnightMsFromId(toId);
+  return Math.floor((b - a) / 86400000);
+}
+
+function dailyNumberFromId(id: string) {
+  // #0001 for epoch day, #0002 next day, ...
+  return diffDaysUTC(DAILY_EPOCH_UTC, id) + 1;
+}
+
+export function formatDailyNumber(n: number) {
+  // 0001..9999
+  const safe = Math.max(0, Math.min(9999, Math.floor(n)));
+  return String(safe).padStart(4, "0");
+}
 // Small, deterministic RNG (mulberry32) seeded from string
 function xmur3(str: string) {
   let h = 1779033703 ^ str.length;
@@ -109,6 +134,7 @@ function generatePlantedParInRange(
 
 export function generateDailyToday() {
   const dailyId = utcDailyId();
+  const dailyNum = dailyNumberFromId(dailyId);
   const seed = `daily:${dailyId}`;
 
   // match your current range
@@ -116,6 +142,8 @@ export function generateDailyToday() {
 
   return {
     dailyId: g.dailyId,
+    dailyNum,
+    dailyNumStr: formatDailyNumber(dailyNum), // "0001".."9999" (comodo per UI)
     seed: g.seed,
     par: g.par,
     grid: g.grid,
