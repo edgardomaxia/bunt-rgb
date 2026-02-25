@@ -6,19 +6,34 @@ export type VersionMeta = {
 
 export const VERSION_HISTORY: VersionMeta[] = [
   {
-  version: "0.5.0",
-  deployedAtIso: "AUTO",
-  notes: [
-    "Practice: PAR target now matches the selected value.",
-    "Practice: added Reset button.",
-    "UI: added quick links (Official Website + Devlog).",
-    "UI: replaced timer hint with a short move explanation.",
-    "Added contextual help: '?' button near the grid opens a mini help modal.",
-  "Removed the inline hint text under the title (moved into the help modal).",
-  "Improved modals UX: consistent top-right close '×' (Version history / Share / Feedback).",
-],
-},
-{
+    version: "0.6.0",
+    deployedAtIso: "AUTO",
+    notes: [
+      "Daily is server source-of-truth: fetch /api/daily (no local generation fallback).",
+      "Daily cache merge: if dailyId matches, keep progress grid but align par/initialGrid with API.",
+      "If /api/daily fails: fallback ONLY to cached daily when cached.dailyId === todayId (no invented daily).",
+      "Practice mode: PAR slider + generator for target PAR.",
+      "Leaderboards refactor v2: Local (Daily + Practice by PAR) + Global endpoints wired (may be unavailable in prov).",
+      "Leaderboard UI: Local-first in prov (Global disabled/locked when needed).",
+      "Practice PAR sync: Practice slider updates leaderboard filter, and solved practice auto-selects its PAR.",
+      "Build fixes for Vercel: removed unused imports/vars that broke tsc build (TS6133).",
+      "Dev workflow: restored localhost to match Vercel preview commit to avoid code drift.",
+    ],
+  },
+  {
+    version: "0.5.0",
+    deployedAtIso: "AUTO",
+    notes: [
+      "Practice: PAR target now matches the selected value.",
+      "Practice: added Reset button.",
+      "UI: added quick links (Official Website + Devlog).",
+      "UI: replaced timer hint with a short move explanation.",
+      "Added contextual help: '?' button near the grid opens a mini help modal.",
+      "Removed the inline hint text under the title (moved into the help modal).",
+      "Improved modals UX: consistent top-right close '×' (Version history / Share / Feedback).",
+    ],
+  },
+  {
     version: "0.4.0",
     deployedAtIso: "2026-02-22T17:44:38+01:00",
     notes: [
@@ -44,12 +59,7 @@ export const VERSION_HISTORY: VersionMeta[] = [
   {
     version: "0.2.0",
     deployedAtIso: "2026-02-22T13:40:11+00:00",
-    notes: [
-      "Version badge + status",
-      "Feedback button (anonymous form link)",
-      "Version history panel",
-      "Favicon",
-    ],
+    notes: ["Version badge + status", "Feedback button (anonymous form link)", "Version history panel", "Favicon"],
   },
   {
     version: "0.1.0",
