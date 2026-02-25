@@ -572,78 +572,127 @@ if (kind === "easy") {
   setRunToken(null);
 }
 }
-function loadDaily() {
+async function loadDaily() {
   const dailyId = utcDailyId(); // UTC date => same for everyone
 
-  // 1) If cached for today, reuse (fast + stable)
+  // 1) Try cache first (keeps in-progress grid), but we will still let API override par/grid if needed
   const cached = loadDailyState();
-  if (cached && cached.dailyId === dailyId) {
-    setMode("normal");
-setPuzzleKind("daily");
-    setPar(cached.par);
-    setInitialGrid(cached.initialGrid.slice());
-    setGrid(cached.grid.slice());
-    setClicks(0);
-    setElapsedMs(0);
 
-    stopTimer();
-    startTimeRef.current = null;
-    savedThisRunRef.current = false;
-
-    mintRunToken("random"); // token GLOBAL: usiamo random anche per daily per ora
-    return;
-  }
-
-  // 2) Generate deterministically from seed
   try {
-    const rng = makeSeededRng(`daily:${dailyId}`);
+    const res = await fetch("/api/daily");
+    const data = await res.json();
 
-    // choose your daily difficulty range (real PAR)
-    const g = generatePlantedParInRange(8, 19, rng, 350);
+    if (!data?.ok) throw new Error("daily api not ok");
 
-    const nextGrid = g.grid;
-    const nextPar = g.par;
+    const apiDailyId = String(data.dailyId ?? dailyId);
+    const apiPar = Number(data.par) || 0;
+    const apiGrid = (data.grid as Color[] | undefined)?.slice?.();
 
-    saveDailyState({
-      dailyId,
-      par: nextPar,
-      grid: nextGrid.slice(),
-      initialGrid: nextGrid.slice(),
-    });
+    if (!apiGrid || apiGrid.length !== SIZE * SIZE) {
+      throw new Error("daily api grid invalid");
+    }
 
-    setMode("normal");
-    setPuzzleKind("daily");
-    setPar(nextPar);
-    setInitialGrid(nextGrid.slice());
-    setGrid(nextGrid);
+    // If cached matches today, keep player's progress grid, but API wins for par.
+    if (cached && cached.dailyId === apiDailyId) {
+      const merged = {
+        ...cached,
+        par: apiPar,
+        // If you prefer API to also win for initialGrid, keep it aligned:
+        initialGrid: cached.initialGrid?.length === SIZE * SIZE ? cached.initialGrid.slice() : apiGrid.slice(),
+      };
+      saveDailyState(merged);
+
+      setMode("normal");
+      setPuzzleKind("daily");
+      setPar(merged.par);
+      setInitialGrid(merged.initialGrid.slice());
+      setGrid(merged.grid.slice());
+    } else {
+      const fresh: DailyState = {
+        dailyId: apiDailyId,
+        par: apiPar,
+        grid: apiGrid.slice(),
+        initialGrid: apiGrid.slice(),
+      };
+      saveDailyState(fresh);
+
+      setMode("normal");
+      setPuzzleKind("daily");
+      setPar(fresh.par);
+      setInitialGrid(fresh.initialGrid.slice());
+      setGrid(fresh.grid.slice());
+    }
+
     setClicks(0);
     setElapsedMs(0);
-
     stopTimer();
     startTimeRef.current = null;
     savedThisRunRef.current = false;
 
+    // token GLOBAL: usiamo random anche per daily per ora
     mintRunToken("random");
+    return;
   } catch (e) {
-    console.error("Daily generation failed:", e);
+    // Fallback: if API fails, use cached (if any), otherwise generate locally as last resort
+    if (cached && cached.dailyId === dailyId) {
+      setMode("normal");
+      setPuzzleKind("daily");
+      setPar(cached.par);
+      setInitialGrid(cached.initialGrid.slice());
+      setGrid(cached.grid.slice());
+      setClicks(0);
+      setElapsedMs(0);
 
-    // never blank screen
-    const fallback = solvedGrid("red");
-    saveDailyState({ dailyId, par: 0, grid: fallback.slice(), initialGrid: fallback.slice() });
+      stopTimer();
+      startTimeRef.current = null;
+      savedThisRunRef.current = false;
 
-    setMode("normal");
-    setPuzzleKind("daily");
-    setPar(0);
-    setInitialGrid(fallback.slice());
-    setGrid(fallback.slice());
-    setClicks(0);
-    setElapsedMs(0);
+      mintRunToken("random");
+      return;
+    }
 
-    stopTimer();
-    startTimeRef.current = null;
-    savedThisRunRef.current = false;
+    // last resort local generation
+    try {
+      const rng = makeSeededRng(`daily:${dailyId}`);
+      const g = generatePlantedParInRange(8, 19, rng, 350);
+      const nextGrid = g.grid;
+      const nextPar = g.par;
 
-    mintRunToken("random");
+      saveDailyState({ dailyId, par: nextPar, grid: nextGrid.slice(), initialGrid: nextGrid.slice() });
+
+      setMode("normal");
+      setPuzzleKind("daily");
+      setPar(nextPar);
+      setInitialGrid(nextGrid.slice());
+      setGrid(nextGrid);
+      setClicks(0);
+      setElapsedMs(0);
+
+      stopTimer();
+      startTimeRef.current = null;
+      savedThisRunRef.current = false;
+
+      mintRunToken("random");
+      return;
+    } catch {
+      const fallback = solvedGrid("red");
+      saveDailyState({ dailyId, par: 0, grid: fallback.slice(), initialGrid: fallback.slice() });
+
+      setMode("normal");
+      setPuzzleKind("daily");
+      setPar(0);
+      setInitialGrid(fallback.slice());
+      setGrid(fallback.slice());
+      setClicks(0);
+      setElapsedMs(0);
+
+      stopTimer();
+      startTimeRef.current = null;
+      savedThisRunRef.current = false;
+
+      mintRunToken("random");
+      return;
+    }
   }
 }
 function loadPracticeWithPar(parTarget: number) {
