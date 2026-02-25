@@ -244,7 +244,6 @@ function AppInner() {
 
   const [clicks, setClicks] = useState(() => initialRun?.clicks ?? 0);
   const [elapsedMs, setElapsedMs] = useState(() => initialRun?.elapsedMs ?? 0);
-
   const [lastSolvedRun, setLastSolvedRun] = useState<LastSolvedRun | null>(null);
 
   // Timer refs
@@ -416,29 +415,28 @@ function AppInner() {
     });
   }, [mode, puzzleKind, par, grid, initialGrid, clicks, elapsedMs]);
 
-  // Stop timer on solve
-  useEffect(() => {
-    if (isSolved) stopTimer();
-  }, [isSolved]);
+// Stop timer on solve + emit lastSolvedRun (Daily + Practice)
+useEffect(() => {
+  if (!isSolved) return;
 
-  // Emit a one-shot solved run for Leaderboards (local save happens there)
-  useEffect(() => {
-    if (!isSolved) return;
-    if (savedThisRunRef.current) return;
+  stopTimer();
 
-    savedThisRunRef.current = true;
+  // evita doppio emit per lo stesso solve
+  if (savedThisRunRef.current) return;
+  savedThisRunRef.current = true;
 
-    const kind: "daily" | "practice" = mode === "practice" ? "practice" : "daily";
+  const run: LastSolvedRun = {
+    kind: mode === "practice" ? "practice" : "daily",
+    par,
+    clicks,
+    timeMs: Math.round(elapsedMs),
+    efficiencyScore,
+    iso: new Date().toISOString(),
+  };
 
-    setLastSolvedRun({
-      kind,
-      score: efficiencyScore,
-      timeMs: Math.round(elapsedMs),
-      clicks,
-      par,
-      iso: new Date().toISOString(),
-    });
-  }, [isSolved, mode, efficiencyScore, elapsedMs, clicks, par]);
+  setLastSolvedRun(run);
+}, [isSolved, mode, par, clicks, elapsedMs, efficiencyScore]);
+
 
   // Open global opt-in modal ONLY after solving Daily (and only once ever)
   useEffect(() => {
@@ -1159,7 +1157,7 @@ function AppInner() {
                 key={index}
                 onClick={() => {
                   if (isSolved) return;
-                  if (!isPractice) startTimerIfNeeded();
+                  startTimerIfNeeded();
                   setGrid((prev) => applyMove(prev, index));
                   setClicks((c) => c + 1);
                 }}
@@ -1324,13 +1322,11 @@ function AppInner() {
           </div>
         )}
 
-        {/* LEADERBOARDS */}
-        <Leaderboards
-          mode={mode}
-          practicePar={practicePar}
-          lastSolvedRun={lastSolvedRun}
-          onConsumeSolvedRun={() => setLastSolvedRun(null)}
-        />
+{/* LEADERBOARDS (always mounted so Practice saves too; UI hidden in practice) */}
+<Leaderboards
+  visible={true}
+  lastSolvedRun={lastSolvedRun}
+/>
 
         {/* FOOTER BUILD INFO */}
         <div
