@@ -11,15 +11,6 @@ type DailyRow = {
   grid: unknown; // jsonb
   created_at: string;
 };
-import { generateDailyToday } from "./_lib/dailyGen.js";
-
-type DailyRow = {
-  daily_id: string;
-  seed: string;
-  par: number;
-  grid: unknown; // jsonb
-  created_at: string;
-};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -34,8 +25,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       auth: { persistSession: false },
     });
 
-const { generateDailyToday } = await import("./_lib/dailyGen.js");
-const g = generateDailyToday();
+    // dynamic import (ESM-safe on Vercel)
+    const { generateDailyToday } = await import("./_lib/dailyGen.js");
+    const g = generateDailyToday();
     const dailyId = g.dailyId;
 
     // 1) try read
