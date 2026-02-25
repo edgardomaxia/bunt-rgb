@@ -10,6 +10,8 @@ import {
   gridFromSolution,
   randomTargetColor,
   minParSolutionToAnySolved,
+  makeSeededRng,
+  generatePlantedParInRange,
 } from "./engine/engine";
 import { APP_VERSION, APP_STATUS } from "./meta/appMeta";
 import { VERSION_HISTORY } from "./meta/versions";
@@ -18,6 +20,7 @@ import { BUILD_INFO } from "./meta/buildInfo";
 const LEADERBOARD_SIZE = 10;
 const STORAGE_KEY = "bunt_rgb_leaderboards_v1";
 const RUN_STATE_KEY = "bunt_rgb_run_state_v1";
+const DAILY_STATE_KEY = "bunt_rgb_daily_state_v1";
 
 type Mode = "normal" | "practice";
 
@@ -30,8 +33,10 @@ type LeaderboardEntry = {
   iso: string; // ISO timestamp
 };
 
-type Leaderboards = Record<Exclude<PuzzleKind, "solved">, LeaderboardEntry[]>;
-type GlobalScoreRow = {
+type LocalKind = Exclude<PuzzleKind, "solved">; // include daily
+type GlobalKind = Exclude<PuzzleKind, "solved" | "daily">; // server supports only easy/medium/random
+
+type Leaderboards = Record<LocalKind, LeaderboardEntry[]>;type GlobalScoreRow = {
   mode: Exclude<PuzzleKind, "solved">;
   nickname: string | null;
   time_ms: number;
@@ -42,7 +47,7 @@ type GlobalScoreRow = {
   app_version: string | null;
 };
 
-type GlobalLeaderboards = Record<Exclude<PuzzleKind, "solved">, GlobalScoreRow[]>;
+type GlobalLeaderboards = Record<GlobalKind, GlobalScoreRow[]>;
 type RunState = {
   puzzleKind: PuzzleKind;
   par: number;
@@ -69,7 +74,7 @@ function formatTimeMs(ms: number) {
 }
 
 function emptyLeaderboards(): Leaderboards {
-  return { easy: [], medium: [], random: [] };
+  return { easy: [], medium: [], random: [], daily: [] };
 }
 
 function loadLeaderboards(): Leaderboards {
@@ -77,11 +82,12 @@ function loadLeaderboards(): Leaderboards {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyLeaderboards();
     const parsed = JSON.parse(raw) as Partial<Leaderboards>;
-    return {
-      easy: Array.isArray(parsed.easy) ? parsed.easy : [],
-      medium: Array.isArray(parsed.medium) ? parsed.medium : [],
-      random: Array.isArray(parsed.random) ? parsed.random : [],
-    };
+return {
+  easy: Array.isArray(parsed.easy) ? parsed.easy : [],
+  medium: Array.isArray(parsed.medium) ? parsed.medium : [],
+  random: Array.isArray(parsed.random) ? parsed.random : [],
+  daily: Array.isArray((parsed as any).daily) ? ((parsed as any).daily as any) : [],
+};
   } catch {
     return emptyLeaderboards();
   }
@@ -125,7 +131,48 @@ function saveRunState(state: RunState) {
 function clearRunState() {
   localStorage.removeItem(RUN_STATE_KEY);
 }
+type DailyState = {
+  dailyId: string; // e.g. "2026-02-25" (UTC)
+  par: number;
+  grid: Color[];
+  initialGrid: Color[];
+};
 
+function loadDailyState(): DailyState | null {
+  try {
+    const raw = localStorage.getItem(DAILY_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<DailyState>;
+    if (!parsed.dailyId) return null;
+    if (parsed.par == null) return null;
+    if (!Array.isArray(parsed.grid) || parsed.grid.length !== SIZE * SIZE) return null;
+
+    const initialGrid =
+      Array.isArray((parsed as any).initialGrid) && (parsed as any).initialGrid.length === SIZE * SIZE
+        ? ((parsed as any).initialGrid as Color[])
+        : (parsed.grid as Color[]);
+
+    return {
+      dailyId: String(parsed.dailyId),
+      par: Number(parsed.par),
+      grid: parsed.grid as Color[],
+      initialGrid,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveDailyState(state: DailyState) {
+  localStorage.setItem(DAILY_STATE_KEY, JSON.stringify(state));
+}
+function utcDailyId(d: Date = new Date()) {
+  // YYYY-MM-DD in UTC (same for everyone)
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 function sortEntries(a: LeaderboardEntry, b: LeaderboardEntry) {
   // 1) score desc, 2) time asc, 3) clicks asc
   if (b.score !== a.score) return b.score - a.score;
@@ -388,11 +435,12 @@ saveRunState({
     };
 
     setLeaderboards((prev) => {
-      const next: Leaderboards = {
-        easy: [...prev.easy],
-        medium: [...prev.medium],
-        random: [...prev.random],
-      };
+const next: Leaderboards = {
+  easy: [...prev.easy],
+  medium: [...prev.medium],
+  random: [...prev.random],
+  daily: [...prev.daily],
+};
 
       next[kind].push(entry);
       next[kind].sort(sortEntries);
@@ -408,8 +456,9 @@ useEffect(() => {
   if (savedThisRunRef.current !== true) return; // garantisce "una volta"
   if (puzzleKind === "solved") return;
 
-  const kind = puzzleKind as Exclude<PuzzleKind, "solved">;
-  submitGlobalScore(kind);
+if (puzzleKind === "daily") return;
+const kind = puzzleKind as GlobalKind;
+submitGlobalScore(kind);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [mode, isSolved]);
 useEffect(() => {
@@ -486,6 +535,80 @@ if (kind === "easy") {
   setRunToken(null);
 }
 }
+function loadDaily() {
+  const dailyId = utcDailyId(); // UTC date => same for everyone
+
+  // 1) If cached for today, reuse (fast + stable)
+  const cached = loadDailyState();
+  if (cached && cached.dailyId === dailyId) {
+    setMode("normal");
+setPuzzleKind("daily");
+    setPar(cached.par);
+    setInitialGrid(cached.initialGrid.slice());
+    setGrid(cached.grid.slice());
+    setClicks(0);
+    setElapsedMs(0);
+
+    stopTimer();
+    startTimeRef.current = null;
+    savedThisRunRef.current = false;
+
+    mintRunToken("random"); // token GLOBAL: usiamo random anche per daily per ora
+    return;
+  }
+
+  // 2) Generate deterministically from seed
+  try {
+    const rng = makeSeededRng(`daily:${dailyId}`);
+
+    // choose your daily difficulty range (real PAR)
+    const g = generatePlantedParInRange(8, 19, rng, 350);
+
+    const nextGrid = g.grid;
+    const nextPar = g.par;
+
+    saveDailyState({
+      dailyId,
+      par: nextPar,
+      grid: nextGrid.slice(),
+      initialGrid: nextGrid.slice(),
+    });
+
+    setMode("normal");
+    setPuzzleKind("daily");
+    setPar(nextPar);
+    setInitialGrid(nextGrid.slice());
+    setGrid(nextGrid);
+    setClicks(0);
+    setElapsedMs(0);
+
+    stopTimer();
+    startTimeRef.current = null;
+    savedThisRunRef.current = false;
+
+    mintRunToken("random");
+  } catch (e) {
+    console.error("Daily generation failed:", e);
+
+    // never blank screen
+    const fallback = solvedGrid("red");
+    saveDailyState({ dailyId, par: 0, grid: fallback.slice(), initialGrid: fallback.slice() });
+
+    setMode("normal");
+    setPuzzleKind("daily");
+    setPar(0);
+    setInitialGrid(fallback.slice());
+    setGrid(fallback.slice());
+    setClicks(0);
+    setElapsedMs(0);
+
+    stopTimer();
+    startTimeRef.current = null;
+    savedThisRunRef.current = false;
+
+    mintRunToken("random");
+  }
+}
 function loadPracticeWithPar(parTarget: number) {
   const safePar = clamp(Math.floor(parTarget), 1, 100);
   
@@ -556,8 +679,8 @@ function clearLeaderboards() {
     setLeaderboards(empty);
     saveLeaderboards(empty);
   }
-async function fetchGlobal(kind: Exclude<PuzzleKind, "solved">) {
-  try {
+async function fetchGlobal(kind: GlobalKind) {
+    try {
     setGlobalLbStatus("loading");
 
     const res = await fetch(`/api/leaderboard?mode=${kind}&limit=${LEADERBOARD_SIZE}`);
@@ -576,8 +699,8 @@ async function fetchGlobal(kind: Exclude<PuzzleKind, "solved">) {
   }
 }
 
-async function mintRunToken(kind: Exclude<PuzzleKind, "solved">) {
-  try {
+async function mintRunToken(kind: GlobalKind) {
+    try {
     setGlobalSaveStatus("idle");
 
     const res = await fetch("/api/run-token", {
@@ -595,8 +718,8 @@ async function mintRunToken(kind: Exclude<PuzzleKind, "solved">) {
   }
 }
 
-async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
-  if (!runToken) return;
+async function submitGlobalScore(kind: GlobalKind) {
+    if (!runToken) return;
 
   try {
     setGlobalSaveStatus("saving");
@@ -635,8 +758,8 @@ async function submitGlobalScore(kind: Exclude<PuzzleKind, "solved">) {
     setGlobalSaveStatus("error");
   }
 }
-  function renderTable(kind: Exclude<PuzzleKind, "solved">, title: string) {
-    const rows = leaderboards[kind];
+function renderTable(kind: LocalKind, title: string) {
+      const rows = leaderboards[kind];
 
     return (
       <div style={cardStyle}>
@@ -1250,7 +1373,10 @@ boxSizing: "border-box",
 ) : (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-      <button onClick={() => loadPuzzle("easy")} style={btnStyle}>
+      <button onClick={loadDaily} style={btnStyle}>
+  Daily
+</button>
+<button onClick={() => loadPuzzle("easy")} style={btnStyle}>
         Easy
       </button>
 
@@ -1365,8 +1491,8 @@ boxSizing: "border-box",
 </div>
 
         {(() => {
-          const renderGlobalTable = (kind: Exclude<PuzzleKind, "solved">, title: string) => {
-            const rows = globalLb[kind];
+          const renderGlobalTable = (kind: GlobalKind, title: string) => {
+            const rows: GlobalScoreRow[] = globalLb[kind] ?? [];
 
             return (
               <div style={cardStyle}>

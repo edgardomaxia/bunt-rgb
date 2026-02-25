@@ -130,7 +130,9 @@ let MOVE_MATRIX_A: number[][] | null = null;
  * Your move affects ONLY the 8 neighbors (not the clicked cell).
  */
 function buildMoveMatrix(): number[][] {
-  const A: number[][] = Array.from({ length: N }, () => Array.from({ length: N }, () => 0));
+  const A: number[][] = Array.from({ length: N }, () =>
+    Array.from({ length: N }, () => 0)
+  );
 
   for (let move = 0; move < N; move++) {
     const affected = neighborIndices(move);
@@ -397,8 +399,44 @@ export function minParToAnySolved(grid: Color[]) {
 
 export type GeneratedPuzzle = { grid: Color[]; par: number; target: Color };
 
-export function randomTargetColor(): Color {
-  const r = Math.floor(Math.random() * 3);
+// --- Seeded RNG helpers (deterministic when seed is fixed) ---
+
+export type Rng = () => number; // returns [0,1)
+
+function xmur3(str: string) {
+  let h = 1779033703 ^ str.length;
+  for (let i = 0; i < str.length; i++) {
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function () {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return h >>> 0;
+  };
+}
+
+function mulberry32(a: number) {
+  return function () {
+    let t = (a += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function makeSeededRng(seed: string): Rng {
+  const seedFn = xmur3(seed);
+  return mulberry32(seedFn());
+}
+
+function randInt(rng: Rng, maxExclusive: number) {
+  return Math.floor(rng() * maxExclusive);
+}
+
+export function randomTargetColor(rng?: Rng): Color {
+  const r = rng ? randInt(rng, 3) : Math.floor(Math.random() * 3);
   return r === 0 ? "red" : r === 1 ? "green" : "blue";
 }
 
@@ -420,8 +458,7 @@ export function gridFromSolution(target: Color, solutionVector: number[]): Color
     const x = solutionVector[i] ?? 0;
 
     // IMPORTANT:
-    // We want `solutionVector` to be the ACTUAL solution the user should play.
-    // So we must generate the puzzle by applying the inverse moves: -x (mod 3).
+    // generate the puzzle by applying the inverse moves: -x (mod 3).
     // In Z3, -1 ≡ 2, -2 ≡ 1.
     const inv = mod3(3 - mod3(x)); // 0->0, 1->2, 2->1
 
@@ -431,28 +468,27 @@ export function gridFromSolution(target: Color, solutionVector: number[]): Color
   return grid;
 }
 
-function shuffleInPlace<T>(arr: T[]) {
+function shuffleInPlace<T>(arr: T[], rng?: Rng) {
   for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = rng ? Math.floor(rng() * (i + 1)) : Math.floor(Math.random() * (i + 1));
     const tmp = arr[i];
     arr[i] = arr[j];
     arr[j] = tmp;
   }
 }
 
-function sampleDistinctIndices(n: number, k: number): number[] {
+function sampleDistinctIndices(n: number, k: number, rng?: Rng): number[] {
   const pool = Array.from({ length: n }, (_, i) => i);
-  shuffleInPlace(pool);
+  shuffleInPlace(pool, rng);
   return pool.slice(0, k);
 }
 
 /**
  * Create vector with exactly `k` distinct cells clicked once (value=1).
- * This enforces "3 different pixels" for easy.
  */
-function vectorKDistinctOnes(k: number): number[] {
+function vectorKDistinctOnes(k: number, rng?: Rng): number[] {
   const v = new Array<number>(N).fill(0);
-  const idx = sampleDistinctIndices(N, k);
+  const idx = sampleDistinctIndices(N, k, rng);
   for (const i of idx) v[i] = 1;
   return v;
 }
@@ -475,7 +511,7 @@ export function generateEasyRealPar3Distinct(): GeneratedPuzzle {
     }
   }
 
-  // Fallback: still return something reasonable
+  // Fallback
   const target = randomTargetColor();
   const planted = vectorKDistinctOnes(3);
   const grid = gridFromSolution(target, planted);
@@ -509,4 +545,79 @@ export function generateRandomRealPar(): GeneratedPuzzle {
 
   const best = minParSolutionToAnySolved(grid);
   return { grid, par: best.par, target: best.target };
+}
+
+export function generatePlantedExactPar(
+  targetPar: number,
+  rng?: Rng,
+  maxAttempts: number = 600
+): GeneratedPuzzle {
+  const want = Math.max(1, Math.min(19, Math.floor(targetPar)));
+
+  let bestGrid: Color[] | null = null;
+  let bestPar = Infinity;
+  let bestTarget: Color = "red";
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const target = randomTargetColor(rng);
+
+    const k = Math.max(2, Math.min(25, want));
+    const planted = vectorKDistinctOnes(k, rng);
+    const grid = gridFromSolution(target, planted);
+
+    const best = minParSolutionToAnySolved(grid);
+    const par = best.par;
+
+    if (par === want) {
+      return { grid, par, target: best.target };
+    }
+
+    if (Math.abs(par - want) < Math.abs(bestPar - want)) {
+      bestGrid = grid;
+      bestPar = par;
+      bestTarget = best.target;
+    }
+  }
+
+  if (bestGrid) return { grid: bestGrid, par: bestPar, target: bestTarget };
+
+  const target = randomTargetColor(rng);
+  const grid = solvedGrid(target);
+  const best = minParSolutionToAnySolved(grid);
+  return { grid, par: best.par, target: best.target };
+}
+
+export function generatePlantedParInRange(
+  minPar: number,
+  maxPar: number,
+  rng?: Rng,
+  maxAttempts: number = 1200
+): GeneratedPuzzle {
+  const min = Math.max(1, Math.min(19, Math.floor(minPar)));
+  const max = Math.max(min, Math.min(19, Math.floor(maxPar)));
+
+  const pick = rng
+    ? min + Math.floor(rng() * (max - min + 1))
+    : min + Math.floor(Math.random() * (max - min + 1));
+
+  const exact = generatePlantedExactPar(pick, rng, Math.floor(maxAttempts * 0.7));
+  if (exact.par >= min && exact.par <= max) return exact;
+
+  let bestGrid: Color[] | null = null;
+  let bestPar = Infinity;
+  let bestTarget: Color = "red";
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const candidate = generatePlantedExactPar(pick, rng, 50);
+    if (candidate.par >= min && candidate.par <= max) return candidate;
+
+    if (Math.abs(candidate.par - pick) < Math.abs(bestPar - pick)) {
+      bestGrid = candidate.grid;
+      bestPar = candidate.par;
+      bestTarget = candidate.target;
+    }
+  }
+
+  if (bestGrid) return { grid: bestGrid, par: bestPar, target: bestTarget };
+  return exact;
 }
