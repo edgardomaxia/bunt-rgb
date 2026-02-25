@@ -3,13 +3,10 @@ import type { Color, PuzzleKind } from "./engine/types";
 import {
   SIZE,
   applyMove,
-  solvedGrid,
   generateRandomRealPar,
   gridFromSolution,
   randomTargetColor,
   minParSolutionToAnySolved,
-  makeSeededRng,
-  generatePlantedParInRange,
 } from "./engine/engine";
 import { APP_VERSION, APP_STATUS } from "./meta/appMeta";
 import { VERSION_HISTORY } from "./meta/versions";
@@ -658,58 +655,13 @@ async function loadDaily() {
       return;
     }
 
-    // Fallback B: local deterministic generation
-    try {
-      const rng = makeSeededRng(`daily:${todayId}`);
-      const g = generatePlantedParInRange(8, 19, rng, 350);
+   // No local fallback: Daily MUST come from Supabase via /api/daily.
+// If API fails and we don't have a valid cache, do nothing (keep current state).
+console.error("[daily] failed to load from /api/daily", e);
 
-      const state: DailyState = {
-        dailyId: todayId,
-        par: g.par,
-        grid: g.grid.slice(),
-        initialGrid: g.grid.slice(),
-      };
-      saveDailyState(state);
-
-      setMode("normal");
-      setPuzzleKind("daily");
-      setPar(state.par);
-      setInitialGrid(state.initialGrid.slice());
-      setGrid(state.grid.slice());
-      setClicks(0);
-      setElapsedMs(0);
-
-      stopTimer();
-      startTimeRef.current = null;
-      savedThisRunRef.current = false;
-
-
-      return;
-    } catch {
-      const fallback = solvedGrid("red");
-      const state: DailyState = {
-        dailyId: todayId,
-        par: 0,
-        grid: fallback.slice(),
-        initialGrid: fallback.slice(),
-      };
-      saveDailyState(state);
-
-      setMode("normal");
-      setPuzzleKind("daily");
-      setPar(0);
-      setInitialGrid(state.initialGrid.slice());
-      setGrid(state.grid.slice());
-      setClicks(0);
-      setElapsedMs(0);
-
-      stopTimer();
-      startTimeRef.current = null;
-      savedThisRunRef.current = false;
-
-
-      return;
-    }
+setMode("normal");
+setPuzzleKind("daily");
+return;
   }
 }
 function loadPracticeWithPar(parTarget: number) {
