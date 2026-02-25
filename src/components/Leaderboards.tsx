@@ -108,8 +108,8 @@ export default function Leaderboards(props: {
   lockView?: "global" | "local"; // se "local" -> Global disabilitato e sempre su Local
 }) {
   const { visible, lastSolvedRun, practicePar, onPracticeParChange, defaultView, lockView } = props;
-  const [view, setView] = useState<"global" | "local">(lockView ?? defaultView ?? "local");  // Leaderboards keeps a local copy, but stays synced with App (two-way)
-  const [practiceParLocal, setPracticeParLocal] = useState<number>(practicePar);
+
+  const [view, setView] = useState<"global" | "local">(lockView ?? defaultView ?? "local");
 
   const [local, setLocal] = useState<LocalStore>(() =>
     typeof window === "undefined" ? emptyLocal() : loadLocal()
@@ -138,7 +138,6 @@ export default function Leaderboards(props: {
     // If just solved a practice run, auto-select that PAR everywhere
     if (lastSolvedRun.kind === "practice") {
       const p = clamp(Math.floor(lastSolvedRun.par), 1, 20);
-      setPracticeParLocal(p);
       onPracticeParChange(p);
     }
 
@@ -176,17 +175,16 @@ export default function Leaderboards(props: {
       try {
         setGlobalStatus("loading");
 
-        // Prova a chiamare le nuove API (se non esistono ancora -> "unavailable")
         const [daily, practice] = await Promise.all([
           fetchGlobalDaily(LEADERBOARD_SIZE),
-          fetchGlobalPractice(practiceParLocal, LEADERBOARD_SIZE),
+          fetchGlobalPractice(practicePar, LEADERBOARD_SIZE),
         ]);
 
         if (!alive) return;
 
         setGlobal({
           daily,
-          practiceByPar: { [String(practiceParLocal)]: practice },
+          practiceByPar: { [String(practicePar)]: practice },
         });
 
         setGlobalStatus("ready");
@@ -199,7 +197,7 @@ export default function Leaderboards(props: {
     return () => {
       alive = false;
     };
-  }, [view, practiceParLocal]);
+  }, [view, practicePar]);
 
   const cardStyle: React.CSSProperties = useMemo(
     () => ({
@@ -267,9 +265,7 @@ export default function Leaderboards(props: {
                     <td style={{ padding: "8px 6px" }}>{formatTimeMs(r.timeMs)}</td>
                     <td style={{ padding: "8px 6px" }}>{r.clicks}</td>
                     <td style={{ padding: "8px 6px" }}>{r.par}</td>
-                    <td style={{ padding: "8px 6px", opacity: 0.8 }}>
-                      {new Date(r.iso).toLocaleString()}
-                    </td>
+                    <td style={{ padding: "8px 6px", opacity: 0.8 }}>{new Date(r.iso).toLocaleString()}</td>
                   </tr>
                 ))
               )}
@@ -281,32 +277,22 @@ export default function Leaderboards(props: {
   }
 
   function renderLocalPractice() {
-    const key = String(practiceParLocal);
+    const key = String(practicePar);
     const rows = Array.isArray(local.practiceByPar[key]) ? local.practiceByPar[key] : [];
 
     return (
       <div style={cardStyle}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            alignItems: "center",
-          }}
-        >
-          <div style={{ fontSize: 16, letterSpacing: 0.2 }}>
-            Local — Practice (PAR {practiceParLocal})
-          </div>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+          <div style={{ fontSize: 16, letterSpacing: 0.2 }}>Local — Practice (PAR {practicePar})</div>
           <div style={{ opacity: 0.7, fontSize: 12 }}>Top {LEADERBOARD_SIZE}</div>
         </div>
 
         <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ fontSize: 12, opacity: 0.7 }}>Filter PAR</div>
           <select
-            value={practiceParLocal}
+            value={practicePar}
             onChange={(e) => {
               const p = Number(e.target.value);
-              setPracticeParLocal(p);
               onPracticeParChange(p);
             }}
             style={{
@@ -352,9 +338,7 @@ export default function Leaderboards(props: {
                     <td style={{ padding: "8px 6px" }}>{formatTimeMs(r.timeMs)}</td>
                     <td style={{ padding: "8px 6px" }}>{r.clicks}</td>
                     <td style={{ padding: "8px 6px" }}>{r.par}</td>
-                    <td style={{ padding: "8px 6px", opacity: 0.8 }}>
-                      {new Date(r.iso).toLocaleString()}
-                    </td>
+                    <td style={{ padding: "8px 6px", opacity: 0.8 }}>{new Date(r.iso).toLocaleString()}</td>
                   </tr>
                 ))
               )}
@@ -377,7 +361,7 @@ export default function Leaderboards(props: {
       );
     }
 
-    const practiceRows = global.practiceByPar[String(practiceParLocal)] ?? [];
+    const practiceRows = global.practiceByPar[String(practicePar)] ?? [];
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -409,19 +393,14 @@ export default function Leaderboards(props: {
                   </tr>
                 ) : (
                   global.daily.map((r, i) => (
-                    <tr
-                      key={`${r.created_at}-${i}`}
-                      style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}
-                    >
+                    <tr key={`${r.created_at}-${i}`} style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
                       <td style={{ padding: "8px 6px" }}>{i + 1}</td>
                       <td style={{ padding: "8px 6px" }}>{r.nickname ?? "anon"}</td>
                       <td style={{ padding: "8px 6px" }}>{r.efficiency_score}</td>
                       <td style={{ padding: "8px 6px" }}>{formatTimeMs(r.time_ms)}</td>
                       <td style={{ padding: "8px 6px" }}>{r.clicks}</td>
                       <td style={{ padding: "8px 6px" }}>{r.par}</td>
-                      <td style={{ padding: "8px 6px", opacity: 0.8 }}>
-                        {new Date(r.created_at).toLocaleString()}
-                      </td>
+                      <td style={{ padding: "8px 6px", opacity: 0.8 }}>{new Date(r.created_at).toLocaleString()}</td>
                     </tr>
                   ))
                 )}
@@ -432,19 +411,16 @@ export default function Leaderboards(props: {
 
         <div style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-            <div style={{ fontSize: 16, letterSpacing: 0.2 }}>
-              Global — Practice (PAR {practiceParLocal})
-            </div>
+            <div style={{ fontSize: 16, letterSpacing: 0.2 }}>Global — Practice (PAR {practicePar})</div>
             <div style={{ opacity: 0.7, fontSize: 12 }}>Top {LEADERBOARD_SIZE}</div>
           </div>
 
           <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, opacity: 0.7 }}>Filter PAR</div>
             <select
-              value={practiceParLocal}
+              value={practicePar}
               onChange={(e) => {
                 const p = Number(e.target.value);
-                setPracticeParLocal(p);
                 onPracticeParChange(p);
               }}
               style={{
@@ -485,19 +461,14 @@ export default function Leaderboards(props: {
                   </tr>
                 ) : (
                   practiceRows.map((r, i) => (
-                    <tr
-                      key={`${r.created_at}-${i}`}
-                      style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}
-                    >
+                    <tr key={`${r.created_at}-${i}`} style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
                       <td style={{ padding: "8px 6px" }}>{i + 1}</td>
                       <td style={{ padding: "8px 6px" }}>{r.nickname ?? "anon"}</td>
                       <td style={{ padding: "8px 6px" }}>{r.efficiency_score}</td>
                       <td style={{ padding: "8px 6px" }}>{formatTimeMs(r.time_ms)}</td>
                       <td style={{ padding: "8px 6px" }}>{r.clicks}</td>
                       <td style={{ padding: "8px 6px" }}>{r.par}</td>
-                      <td style={{ padding: "8px 6px", opacity: 0.8 }}>
-                        {new Date(r.created_at).toLocaleString()}
-                      </td>
+                      <td style={{ padding: "8px 6px", opacity: 0.8 }}>{new Date(r.created_at).toLocaleString()}</td>
                     </tr>
                   ))
                 )}
@@ -541,9 +512,9 @@ export default function Leaderboards(props: {
           >
             Global
           </button>
-                    <button
+
+          <button
             onClick={() => setView("local")}
-            disabled={lockView === "local"}
             style={{
               ...btnStyle,
               background: view === "local" ? "#fff" : "rgba(255,255,255,.06)",
@@ -561,8 +532,6 @@ export default function Leaderboards(props: {
         <>
           {renderLocalPractice()}
           {renderLocalDaily()}
-          
-          
 
           <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
             <button onClick={clearLocal} style={btnStyle}>
