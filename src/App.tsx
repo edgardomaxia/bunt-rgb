@@ -22,6 +22,8 @@ const LEADERBOARD_SIZE = 10;
 const STORAGE_KEY = "bunt_rgb_leaderboards_v1";
 const RUN_STATE_KEY = "bunt_rgb_run_state_v1";
 const DAILY_STATE_KEY = "bunt_rgb_daily_state_v1";
+const GLOBAL_OPT_KEY = "bunt_rgb_global_opt_in_v1"; // "yes" | "no"
+const NICKNAME_KEY = "bunt_rgb_nickname_v1"; // string
 
 type Mode = "normal" | "practice";
 
@@ -73,7 +75,11 @@ function formatTimeMs(ms: number) {
   const mmm = String(millis).padStart(3, "0");
   return `${mm}:${ss}.${mmm}`;
 }
-
+function gridIsSolved(g: Color[]) {
+  if (!Array.isArray(g) || g.length === 0) return false;
+  const first = g[0];
+  return g.every((c) => c === first);
+}
 function emptyLeaderboards(): Leaderboards {
   return { easy: [], medium: [], random: [], daily: [] };
 }
@@ -167,6 +173,35 @@ function loadDailyState(): DailyState | null {
 function saveDailyState(state: DailyState) {
   localStorage.setItem(DAILY_STATE_KEY, JSON.stringify(state));
 }
+function loadGlobalOpt(): "yes" | "no" | null {
+  try {
+    const v = localStorage.getItem(GLOBAL_OPT_KEY);
+    return v === "yes" || v === "no" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveGlobalOpt(v: "yes" | "no") {
+  try {
+    localStorage.setItem(GLOBAL_OPT_KEY, v);
+  } catch {}
+}
+
+function loadNickname(): string {
+  try {
+    return localStorage.getItem(NICKNAME_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveNickname(v: string) {
+  try {
+    localStorage.setItem(NICKNAME_KEY, v);
+  } catch {}
+}
+
 // (moved) utcDailyId is imported from ./meta/dailyMeta
 function sortEntries(a: LeaderboardEntry, b: LeaderboardEntry) {
   // 1) score desc, 2) time asc, 3) clicks asc
@@ -212,8 +247,8 @@ function formatOnlineIso(iso: string) {
   if (Number.isNaN(d.getTime())) return `online: ${iso}`;
   return fmt(d);
 }
-export default function App() {
-  const initialRun = useMemo(() => {
+function AppInner() {
+    const initialRun = useMemo(() => {
     if (typeof window === "undefined") return null;
     return loadRunState();
     
@@ -237,8 +272,16 @@ const [nextDailyIn, setNextDailyIn] = useState<string>(() =>
 const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 const [isShareOpen, setIsShareOpen] = useState(false);
 const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [puzzleKind, setPuzzleKind] = useState<PuzzleKind>(() => initialRun?.puzzleKind ?? "random");
+const [isGlobalOptOpen, setIsGlobalOptOpen] = useState(false);
+const [globalOpt, setGlobalOpt] = useState<"yes" | "no" | null>(() =>
+  typeof window === "undefined" ? null : loadGlobalOpt()
+);
+const [nickname, setNickname] = useState<string>(() =>
+  typeof window === "undefined" ? "" : loadNickname()
+);
 
+const pendingGlobalKindRef = useRef<GlobalKind | null>(null);
+const [puzzleKind, setPuzzleKind] = useState<PuzzleKind>(() => initialRun?.puzzleKind ?? "daily");
 const [par, setPar] = useState<number>(() => {
   if (initialRun) return initialRun.par;
   return bootstrap?.par ?? 0;
@@ -246,12 +289,14 @@ const [par, setPar] = useState<number>(() => {
 
 const [grid, setGrid] = useState<Color[]>(() => {
   if (initialRun) return initialRun.grid;
-  return bootstrap?.grid ?? solvedGrid("red");
+  // fallback: non usare mai una griglia "solved" al boot
+  return bootstrap?.grid ?? generateRandomRealPar().grid;
 });
 
 const [initialGrid, setInitialGrid] = useState<Color[]>(() => {
   if (initialRun) return (initialRun.initialGrid ?? initialRun.grid) as Color[];
-  return (bootstrap?.grid ?? solvedGrid("red")).slice();
+  // fallback coerente col grid sopra
+  return (bootstrap?.grid ?? generateRandomRealPar().grid).slice();
 });
 
   const [clicks, setClicks] = useState(() => initialRun?.clicks ?? 0);
@@ -479,7 +524,12 @@ const next: Leaderboards = {
   daily: [...prev.daily],
 };
 
-      next[kind].push(entry);
+if (!(kind in next)) {
+  console.warn("[leaderboard] unknown kind, skip save:", kind);
+  return prev;
+}
+
+next[kind].push(entry);
       next[kind].sort(sortEntries);
       next[kind] = next[kind].slice(0, LEADERBOARD_SIZE);
 
@@ -488,16 +538,24 @@ const next: Leaderboards = {
     });
   }, [mode, isSolved, puzzleKind, efficiencyScore, elapsedMs, clicks, par]);
 useEffect(() => {
+  // global leaderboard submit DISABLED for now
+  return;
+}, []);
+useEffect(() => {
   if (mode !== "normal") return;
+  if (puzzleKind !== "daily") return;
   if (!isSolved) return;
-  if (savedThisRunRef.current !== true) return; // garantisce "una volta"
-  if (puzzleKind === "solved") return;
+  if (savedThisRunRef.current !== true) return; // una volta sola
 
-if (puzzleKind === "daily") return;
-const kind = puzzleKind as GlobalKind;
-submitGlobalScore(kind);
+  // se ha già risposto in passato, non rompere più
+  const opt = globalOpt ?? (typeof window === "undefined" ? null : loadGlobalOpt());
+  if (opt) return;
+
+  // apri la modal SOLO dopo aver risolto il daily
+  setIsGlobalOptOpen(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [mode, isSolved]);
+}, [mode, puzzleKind, isSolved, globalOpt]);
+
 useEffect(() => {
   if (lbView !== "global") return;
   // carica tutte e 3 (semplice e robusto)
@@ -509,26 +567,26 @@ useEffect(() => {
 // ESC closes modals + lock body scroll when any modal is open
 useEffect(() => {
   function onKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      setIsVersionOpen(false);
-      setIsFeedbackOpen(false);
-      setIsShareOpen(false);
-      setIsHelpOpen(false);
-    }
+if (e.key === "Escape") {
+  setIsVersionOpen(false);
+  setIsFeedbackOpen(false);
+  setIsShareOpen(false);
+  setIsHelpOpen(false);
+  setIsGlobalOptOpen(false);
+}
   }
 
   window.addEventListener("keydown", onKeyDown);
 
-  const anyModalOpen = isVersionOpen || isFeedbackOpen || isShareOpen || isHelpOpen;
-  const prevOverflow = document.body.style.overflow;
+const anyModalOpen =
+  isVersionOpen || isFeedbackOpen || isShareOpen || isHelpOpen || isGlobalOptOpen;  const prevOverflow = document.body.style.overflow;
   if (anyModalOpen) document.body.style.overflow = "hidden";
 
   return () => {
     window.removeEventListener("keydown", onKeyDown);
     document.body.style.overflow = prevOverflow;
   };
-}, [isVersionOpen, isFeedbackOpen, isShareOpen]);
-function loadPuzzle(kind: PuzzleKind) {
+}, [isVersionOpen, isFeedbackOpen, isShareOpen, isHelpOpen, isGlobalOptOpen]);function loadPuzzle(kind: PuzzleKind) {
   let nextGrid: Color[];
   let nextPar: number;
 
@@ -573,18 +631,18 @@ if (kind === "easy") {
 }
 }
 async function loadDaily() {
-  const dailyId = utcDailyId(); // UTC date => same for everyone
+  const todayId = utcDailyId(); // UTC date => same for everyone
 
-  // 1) Try cache first (keeps in-progress grid), but we will still let API override par/grid if needed
+  // 1) Try cache first (keeps in-progress grid)
   const cached = loadDailyState();
 
   try {
-    const res = await fetch("/api/daily");
+    const res = await fetch("/api/daily", { cache: "no-store" });
     const data = await res.json();
 
     if (!data?.ok) throw new Error("daily api not ok");
 
-    const apiDailyId = String(data.dailyId ?? dailyId);
+    const apiDailyId = String(data.dailyId ?? todayId);
     const apiPar = Number(data.par) || 0;
     const apiGrid = (data.grid as Color[] | undefined)?.slice?.();
 
@@ -594,11 +652,12 @@ async function loadDaily() {
 
     // If cached matches today, keep player's progress grid, but API wins for par.
     if (cached && cached.dailyId === apiDailyId) {
-      const merged = {
-        ...cached,
+      const merged: DailyState = {
+        dailyId: apiDailyId,
         par: apiPar,
-        // If you prefer API to also win for initialGrid, keep it aligned:
-        initialGrid: cached.initialGrid?.length === SIZE * SIZE ? cached.initialGrid.slice() : apiGrid.slice(),
+        grid: cached.grid.slice(),
+        initialGrid:
+          cached.initialGrid?.length === SIZE * SIZE ? cached.initialGrid.slice() : apiGrid.slice(),
       };
       saveDailyState(merged);
 
@@ -629,12 +688,12 @@ async function loadDaily() {
     startTimeRef.current = null;
     savedThisRunRef.current = false;
 
-    // token GLOBAL: usiamo random anche per daily per ora
+    // token GLOBAL: for now we reuse random token
     mintRunToken("random");
     return;
   } catch (e) {
-    // Fallback: if API fails, use cached (if any), otherwise generate locally as last resort
-    if (cached && cached.dailyId === dailyId) {
+    // Fallback A: cache (if same day)
+    if (cached && cached.dailyId === todayId) {
       setMode("normal");
       setPuzzleKind("daily");
       setPar(cached.par);
@@ -651,20 +710,24 @@ async function loadDaily() {
       return;
     }
 
-    // last resort local generation
+    // Fallback B: local deterministic generation
     try {
-      const rng = makeSeededRng(`daily:${dailyId}`);
+      const rng = makeSeededRng(`daily:${todayId}`);
       const g = generatePlantedParInRange(8, 19, rng, 350);
-      const nextGrid = g.grid;
-      const nextPar = g.par;
 
-      saveDailyState({ dailyId, par: nextPar, grid: nextGrid.slice(), initialGrid: nextGrid.slice() });
+      const state: DailyState = {
+        dailyId: todayId,
+        par: g.par,
+        grid: g.grid.slice(),
+        initialGrid: g.grid.slice(),
+      };
+      saveDailyState(state);
 
       setMode("normal");
       setPuzzleKind("daily");
-      setPar(nextPar);
-      setInitialGrid(nextGrid.slice());
-      setGrid(nextGrid);
+      setPar(state.par);
+      setInitialGrid(state.initialGrid.slice());
+      setGrid(state.grid.slice());
       setClicks(0);
       setElapsedMs(0);
 
@@ -676,13 +739,19 @@ async function loadDaily() {
       return;
     } catch {
       const fallback = solvedGrid("red");
-      saveDailyState({ dailyId, par: 0, grid: fallback.slice(), initialGrid: fallback.slice() });
+      const state: DailyState = {
+        dailyId: todayId,
+        par: 0,
+        grid: fallback.slice(),
+        initialGrid: fallback.slice(),
+      };
+      saveDailyState(state);
 
       setMode("normal");
       setPuzzleKind("daily");
       setPar(0);
-      setInitialGrid(fallback.slice());
-      setGrid(fallback.slice());
+      setInitialGrid(state.initialGrid.slice());
+      setGrid(state.grid.slice());
       setClicks(0);
       setElapsedMs(0);
 
@@ -808,8 +877,10 @@ async function submitGlobalScore(kind: GlobalKind) {
     if (!runToken) return;
     
   // prevent polluting global leaderboard from preview/dev builds
-  if (BUILD_INFO?.vercelEnv && BUILD_INFO.vercelEnv !== "production") return;
+const allowGlobalSave =
+  BUILD_INFO?.vercelEnv === "production" || BUILD_INFO?.gitBranch === "provvisorio-daily";
 
+if (!allowGlobalSave) return;
   const appVer =
     BUILD_INFO?.gitSha === "local" ? "local" : (BUILD_INFO?.gitSha?.slice(0, 7) ?? "unknown");
   if (appVer.includes("test") || appVer.includes("local")) return;
@@ -825,7 +896,7 @@ async function submitGlobalScore(kind: GlobalKind) {
   timeMs: Math.round(elapsedMs),
   clicks,
   par,
-  nickname: "claude", // poi lo rendiamo input
+nickname: nickname.trim() ? nickname.trim() : null,
 appVersion: appVer,
 }),
     });
@@ -1203,7 +1274,95 @@ boxSizing: "border-box",
     </div>
   </div>
 ) : null}
+{/* GLOBAL SAVE OPT-IN MODAL */}
+{isGlobalOptOpen ? (
+  <div
+    onClick={() => setIsGlobalOptOpen(false)}
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,.6)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 16,
+      zIndex: 61,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: "min(520px, 92vw)",
+        borderRadius: 16,
+        border: "1px solid rgba(255,255,255,.14)",
+        background: "rgba(15,15,15,.96)",
+        boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+        padding: 16,
+        position: "relative",
+      }}
+    >
+      <button onClick={() => setIsGlobalOptOpen(false)} style={modalCloseStyle} aria-label="Close">
+        ×
+      </button>
 
+      <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Save score online?</div>
+      <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10 }}>
+        You’ll appear in the Global Leaderboard. Nickname is optional.
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Nickname (optional)</div>
+        <input
+          value={nickname}
+          onChange={(e) => {
+            setNickname(e.target.value);
+          }}
+          placeholder="e.g. axiomizer"
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,.18)",
+            background: "rgba(255,255,255,.06)",
+            color: "#fff",
+            outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end", flexWrap: "wrap" }}>
+        <button
+          onClick={() => {
+            saveGlobalOpt("no");
+            setGlobalOpt("no");
+            setIsGlobalOptOpen(false);
+            pendingGlobalKindRef.current = null;
+          }}
+          style={btnStyle}
+        >
+          No thanks
+        </button>
+
+        <button
+          onClick={() => {
+            const nn = nickname.trim();
+            saveNickname(nn);
+            saveGlobalOpt("yes");
+            setGlobalOpt("yes");
+            setIsGlobalOptOpen(false);
+
+pendingGlobalKindRef.current = null;
+// daily: per ora non inviamo nulla al server
+          }}
+          style={{ ...btnStyle, background: "#fff", color: "#000" }}
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+) : null}
       {/* GAME */}
       <div
         style={{
@@ -1511,15 +1670,15 @@ boxSizing: "border-box",
       `}</style>
     </div>
 
-    <button
-      onClick={() => {
-        setMode("normal");
-        loadPuzzle("random");
-      }}
-      style={backBtnStyle}
-    >
-      Back
-    </button>
+<button
+  onClick={() => {
+    setMode("normal");
+    loadDaily(); // torna al Daily, non inventare PuzzleKind
+  }}
+  style={backBtnStyle}
+>
+  Back
+</button>
   </div>
 ) : (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
@@ -1717,5 +1876,73 @@ boxSizing: "border-box",
 </div>
       </div>
     </div>
+  );
+}
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null; info: string }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null, info: "" };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    this.setState({ error, info: info.componentStack || "" });
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div
+          style={{
+            minHeight: "100vh",
+            width: "100vw",
+            background: "#000",
+            color: "#fff",
+            fontFamily: "system-ui",
+            padding: 16,
+            boxSizing: "border-box",
+          }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 10 }}>
+            App crashed (runtime error)
+          </div>
+
+          <div style={{ opacity: 0.85, marginBottom: 8 }}>
+            {String(this.state.error)}
+          </div>
+
+          <pre
+            style={{
+              whiteSpace: "pre-wrap",
+              opacity: 0.75,
+              fontSize: 12,
+              lineHeight: 1.35,
+              border: "1px solid rgba(255,255,255,.14)",
+              borderRadius: 12,
+              padding: 12,
+              background: "rgba(255,255,255,.04)",
+            }}
+          >
+            {this.state.info}
+          </pre>
+
+          <div style={{ marginTop: 12, opacity: 0.7, fontSize: 12 }}>
+            Tip: apri anche la Console per vedere lo stack completo.
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children as any;
+  }
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
   );
 }
