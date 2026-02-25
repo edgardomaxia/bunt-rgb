@@ -1,5 +1,7 @@
+// src/App.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { Color, PuzzleKind } from "./engine/types";
+import type { Color } from "./engine/types";
+import Leaderboards, { type LastSolvedRun } from "./components/Leaderboards";
 import {
   SIZE,
   applyMove,
@@ -13,46 +15,28 @@ import { VERSION_HISTORY } from "./meta/versions";
 import { BUILD_INFO } from "./meta/buildInfo";
 import { utcDailyId, dailyNumberFromId, nextDailyUtcMs, formatCountdown } from "./meta/dailyMeta";
 
-const LEADERBOARD_SIZE = 10;
-const STORAGE_KEY = "bunt_rgb_leaderboards_v1";
 const RUN_STATE_KEY = "bunt_rgb_run_state_v1";
 const DAILY_STATE_KEY = "bunt_rgb_daily_state_v1";
 const GLOBAL_OPT_KEY = "bunt_rgb_global_opt_in_v1"; // "yes" | "no"
 const NICKNAME_KEY = "bunt_rgb_nickname_v1"; // string
 
 type Mode = "normal" | "practice";
+type GameKind = "daily" | "practice";
 
-type LeaderboardEntry = {
-  kind: Exclude<PuzzleKind, "solved">;
-  score: number; // efficiency 0..10000
-  timeMs: number;
-  clicks: number;
-  par: number;
-  iso: string; // ISO timestamp
-};
-
-type LocalKind = Exclude<PuzzleKind, "solved">; // include daily
-type GlobalKind = Exclude<PuzzleKind, "solved" | "daily">; // server supports only easy/medium/random
-
-type Leaderboards = Record<LocalKind, LeaderboardEntry[]>;type GlobalScoreRow = {
-  mode: Exclude<PuzzleKind, "solved">;
-  nickname: string | null;
-  time_ms: number;
-  clicks: number;
-  par: number;
-  efficiency_score: number;
-  created_at: string;
-  app_version: string | null;
-};
-
-type GlobalLeaderboards = Record<GlobalKind, GlobalScoreRow[]>;
 type RunState = {
-  puzzleKind: PuzzleKind;
+  puzzleKind: GameKind;
   par: number;
   grid: Color[];
   initialGrid: Color[];
   clicks: number;
   elapsedMs: number;
+};
+
+type DailyState = {
+  dailyId: string; // e.g. "2026-02-25" (UTC)
+  par: number;
+  grid: Color[];
+  initialGrid: Color[];
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -71,52 +55,30 @@ function formatTimeMs(ms: number) {
   return `${mm}:${ss}.${mmm}`;
 }
 
-function emptyLeaderboards(): Leaderboards {
-  return { easy: [], medium: [], random: [], daily: [] };
-}
-
-function loadLeaderboards(): Leaderboards {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyLeaderboards();
-    const parsed = JSON.parse(raw) as Partial<Leaderboards>;
-return {
-  easy: Array.isArray(parsed.easy) ? parsed.easy : [],
-  medium: Array.isArray(parsed.medium) ? parsed.medium : [],
-  random: Array.isArray(parsed.random) ? parsed.random : [],
-  daily: Array.isArray((parsed as any).daily) ? ((parsed as any).daily as any) : [],
-};
-  } catch {
-    return emptyLeaderboards();
-  }
-}
-
-function saveLeaderboards(lb: Leaderboards) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(lb));
-}
-
 function loadRunState(): RunState | null {
   try {
     const raw = localStorage.getItem(RUN_STATE_KEY);
     if (!raw) return null;
 
-const parsed = JSON.parse(raw) as Partial<RunState>;
-if (!parsed.puzzleKind || parsed.par == null || !parsed.grid) return null;
-if (!Array.isArray(parsed.grid) || parsed.grid.length !== SIZE * SIZE) return null;
+    const parsed = JSON.parse(raw) as Partial<RunState>;
+    if (!parsed.puzzleKind || parsed.par == null || !parsed.grid) return null;
+    if (!Array.isArray(parsed.grid) || parsed.grid.length !== SIZE * SIZE) return null;
 
-const initialGrid =
-  Array.isArray((parsed as any).initialGrid) && (parsed as any).initialGrid.length === SIZE * SIZE
-    ? ((parsed as any).initialGrid as Color[])
-    : (parsed.grid as Color[]);
+    const initialGrid =
+      Array.isArray((parsed as any).initialGrid) && (parsed as any).initialGrid.length === SIZE * SIZE
+        ? ((parsed as any).initialGrid as Color[])
+        : (parsed.grid as Color[]);
 
-return {
-  puzzleKind: parsed.puzzleKind,
-  par: Number(parsed.par),
-  grid: parsed.grid as Color[],
-  initialGrid,
-  clicks: Number(parsed.clicks ?? 0),
-  elapsedMs: Number(parsed.elapsedMs ?? 0),
-};
+    const kind = parsed.puzzleKind === "practice" ? "practice" : "daily";
+
+    return {
+      puzzleKind: kind,
+      par: Number(parsed.par),
+      grid: parsed.grid as Color[],
+      initialGrid,
+      clicks: Number(parsed.clicks ?? 0),
+      elapsedMs: Number(parsed.elapsedMs ?? 0),
+    };
   } catch {
     return null;
   }
@@ -129,12 +91,6 @@ function saveRunState(state: RunState) {
 function clearRunState() {
   localStorage.removeItem(RUN_STATE_KEY);
 }
-type DailyState = {
-  dailyId: string; // e.g. "2026-02-25" (UTC)
-  par: number;
-  grid: Color[];
-  initialGrid: Color[];
-};
 
 function loadDailyState(): DailyState | null {
   try {
@@ -164,6 +120,7 @@ function loadDailyState(): DailyState | null {
 function saveDailyState(state: DailyState) {
   localStorage.setItem(DAILY_STATE_KEY, JSON.stringify(state));
 }
+
 function loadGlobalOpt(): "yes" | "no" | null {
   try {
     const v = localStorage.getItem(GLOBAL_OPT_KEY);
@@ -193,18 +150,12 @@ function saveNickname(v: string) {
   } catch {}
 }
 
-// (moved) utcDailyId is imported from ./meta/dailyMeta
-function sortEntries(a: LeaderboardEntry, b: LeaderboardEntry) {
-  // 1) score desc, 2) time asc, 3) clicks asc
-  if (b.score !== a.score) return b.score - a.score;
-  if (a.timeMs !== b.timeMs) return a.timeMs - b.timeMs;
-  return a.clicks - b.clicks;
-}
 const TILE_COLORS: Record<Color, string> = {
   red: "#f31b1b",
   green: "#00d500",
   blue: "#0033ff",
 };
+
 function formatOnlineIso(iso: string) {
   const fmt = (d: Date) => {
     const date = d.toLocaleDateString("it-IT", {
@@ -225,7 +176,6 @@ function formatOnlineIso(iso: string) {
 
   if (iso === "TBD") return "online: TBD";
 
-  // AUTO = usa build time, ma se non è una data valida => local
   if (iso === "AUTO") {
     const d = new Date(BUILD_INFO.builtAtIso);
     if (BUILD_INFO.builtAtIso === "local") return "online: local";
@@ -233,121 +183,76 @@ function formatOnlineIso(iso: string) {
     return fmt(d);
   }
 
-  // ISO esplicito nel versions.ts
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return `online: ${iso}`;
   return fmt(d);
 }
+
 function AppInner() {
-    const initialRun = useMemo(() => {
+  const initialRun = useMemo(() => {
     if (typeof window === "undefined") return null;
     return loadRunState();
-    
   }, []);
-  const bootstrap = useMemo(() => {
-  if (typeof window === "undefined") return null;
-  if (initialRun) return null;
-  return generateRandomRealPar();
-}, [initialRun]);
-const [mode, setMode] = useState<Mode>("normal");
-const [practicePar, setPracticePar] = useState<number>(5);
 
-// DAILY LABEL + COUNTDOWN STATE
-const [dailyId, setDailyId] = useState<string>(() => utcDailyId());
-const [dailyNum, setDailyNum] = useState<number>(() => dailyNumberFromId(utcDailyId()));
-const [nextDailyIn, setNextDailyIn] = useState<string>(() =>
-  formatCountdown(nextDailyUtcMs(new Date()) - Date.now())
-);
+  const bootstrap = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    if (initialRun) return null;
+    return generateRandomRealPar();
+  }, [initialRun]);
+
+  const [mode, setMode] = useState<Mode>("normal");
+  const [practicePar, setPracticePar] = useState<number>(5);
+
+  // DAILY LABEL + COUNTDOWN STATE
+  const [dailyId, setDailyId] = useState<string>(() => utcDailyId());
+  const [dailyNum, setDailyNum] = useState<number>(() => dailyNumberFromId(utcDailyId()));
+  const [nextDailyIn, setNextDailyIn] = useState<string>(() =>
+    formatCountdown(nextDailyUtcMs(new Date()) - Date.now())
+  );
 
   const [isVersionOpen, setIsVersionOpen] = useState(false);
-const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
-const [isShareOpen, setIsShareOpen] = useState(false);
-const [isHelpOpen, setIsHelpOpen] = useState(false);
-const [isGlobalOptOpen, setIsGlobalOptOpen] = useState(false);
-const [globalOpt, setGlobalOpt] = useState<"yes" | "no" | null>(() =>
-  typeof window === "undefined" ? null : loadGlobalOpt()
-);
-const [nickname, setNickname] = useState<string>(() =>
-  typeof window === "undefined" ? "" : loadNickname()
-);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
-const pendingGlobalKindRef = useRef<GlobalKind | null>(null);
-const [puzzleKind, setPuzzleKind] = useState<PuzzleKind>(() => initialRun?.puzzleKind ?? "daily");
-const [par, setPar] = useState<number>(() => {
-  if (initialRun) return initialRun.par;
-  return bootstrap?.par ?? 0;
-});
+  const [isGlobalOptOpen, setIsGlobalOptOpen] = useState(false);
+  const [globalOpt, setGlobalOpt] = useState<"yes" | "no" | null>(() =>
+    typeof window === "undefined" ? null : loadGlobalOpt()
+  );
+  const [nickname, setNickname] = useState<string>(() =>
+    typeof window === "undefined" ? "" : loadNickname()
+  );
 
-const [grid, setGrid] = useState<Color[]>(() => {
-  if (initialRun) return initialRun.grid;
-  // fallback: non usare mai una griglia "solved" al boot
-  return bootstrap?.grid ?? generateRandomRealPar().grid;
-});
+  const [puzzleKind, setPuzzleKind] = useState<GameKind>(() =>
+    (initialRun?.puzzleKind as GameKind | undefined) ?? "daily"
+  );
 
-const [initialGrid, setInitialGrid] = useState<Color[]>(() => {
-  if (initialRun) return (initialRun.initialGrid ?? initialRun.grid) as Color[];
-  // fallback coerente col grid sopra
-  return (bootstrap?.grid ?? generateRandomRealPar().grid).slice();
-});
+  const [par, setPar] = useState<number>(() => {
+    if (initialRun) return initialRun.par;
+    return bootstrap?.par ?? 0;
+  });
+
+  const [grid, setGrid] = useState<Color[]>(() => {
+    if (initialRun) return initialRun.grid;
+    return bootstrap?.grid ?? generateRandomRealPar().grid;
+  });
+
+  const [initialGrid, setInitialGrid] = useState<Color[]>(() => {
+    if (initialRun) return (initialRun.initialGrid ?? initialRun.grid) as Color[];
+    return (bootstrap?.grid ?? generateRandomRealPar().grid).slice();
+  });
 
   const [clicks, setClicks] = useState(() => initialRun?.clicks ?? 0);
   const [elapsedMs, setElapsedMs] = useState(() => initialRun?.elapsedMs ?? 0);
 
-  const [leaderboards, setLeaderboards] = useState<Leaderboards>(() =>
-    typeof window === "undefined" ? emptyLeaderboards() : loadLeaderboards()
-  );
-  const [lbView, setLbView] = useState<"local" | "global">("local");
-const [globalLb, setGlobalLb] = useState<GlobalLeaderboards>(() => ({
-  easy: [],
-  medium: [],
-  random: [],
-}));
-const [globalLbStatus, setGlobalLbStatus] = useState<
-  "idle" | "loading" | "ready" | "error"
->("idle");
-const [globalSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");// Auto-load Daily on first mount (normal mode)
-useEffect(() => {
-  if (typeof window === "undefined") return;
-  if (mode !== "normal") return;
+  const [lastSolvedRun, setLastSolvedRun] = useState<LastSolvedRun | null>(null);
 
-  // If we already have a stored run-state, keep it.
-  if (initialRun) return;
-
-  loadDaily();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-// DAILY: update countdown every second + detect day rollover (UTC)
-useEffect(() => {
-  if (typeof window === "undefined") return;
-
-  const tick = () => {
-    const now = Date.now();
-    const msLeft = nextDailyUtcMs(new Date()) - now;
-    setNextDailyIn(formatCountdown(msLeft));
-
-    const idNow = utcDailyId();
-    if (idNow !== dailyId) {
-      setDailyId(idNow);
-      setDailyNum(dailyNumberFromId(idNow));
-
-      // auto-refresh daily only if user is currently on Daily in normal mode
-      if (mode === "normal" && puzzleKind === "daily") {
-        loadDaily();
-      }
-    }
-  };
-
-  tick();
-  const t = window.setInterval(tick, 1000);
-  return () => window.clearInterval(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [dailyId, mode, puzzleKind]);
   // Timer refs
   const startTimeRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const runningRef = useRef(false);
 
-  // Avoid saving multiple times for the same solved run
+  // Avoid duplicates for the same solved run
   const savedThisRunRef = useRef(false);
 
   const isSolved = useMemo(() => {
@@ -370,6 +275,7 @@ useEffect(() => {
     color: "#fff",
     cursor: "pointer",
   };
+
   const topLinkStyle: React.CSSProperties = {
     background: "rgba(255,255,255,.08)",
     border: "1px solid rgba(255,255,255,.15)",
@@ -388,6 +294,7 @@ useEffect(() => {
     height: 44,
     boxSizing: "border-box",
   };
+
   const practiceBtnStyle: React.CSSProperties = {
     padding: "10px 18px",
     borderRadius: 12,
@@ -398,14 +305,6 @@ useEffect(() => {
     fontSize: 16,
     letterSpacing: 0.6,
     fontWeight: 700,
-  };
-
-  const cardStyle: React.CSSProperties = {
-    width: "min(560px, 92vw)",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,.10)",
-    background: "rgba(255,255,255,.04)",
-    padding: 14,
   };
 
   const resetBtnStyle: React.CSSProperties = {
@@ -420,25 +319,25 @@ useEffect(() => {
     background: "#fff",
     color: "#000",
   };
-const modalCloseStyle: React.CSSProperties = {
-  position: "absolute",
-  top: 12,
-  right: 14,
-  background: "transparent",
-  border: "none",
-  color: "#fff",
-  fontSize: 18,
-  cursor: "pointer",
-  opacity: 0.75,
-  padding: 4,
-};
 
+  const modalCloseStyle: React.CSSProperties = {
+    position: "absolute",
+    top: 12,
+    right: 14,
+    background: "transparent",
+    border: "none",
+    color: "#fff",
+    fontSize: 18,
+    cursor: "pointer",
+    opacity: 0.75,
+    padding: 4,
+  };
 
-function getShareText() {
-  return `Can you solve this?\nhttps://bunt-rgb.com/demo/`;
-}
+  function getShareText() {
+    return `Can you solve this?\nhttps://bunt-rgb.com/demo/`;
+  }
 
-function stopTimer() {
+  function stopTimer() {
     runningRef.current = false;
     if (rafIdRef.current != null) {
       cancelAnimationFrame(rafIdRef.current);
@@ -461,350 +360,262 @@ function stopTimer() {
     rafIdRef.current = requestAnimationFrame(tick);
   }
 
-  // Persist run-state ONLY in normal mode AND NOT for Random (random must regenerate on refresh)
+  // Auto-load Daily on first mount (normal mode)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (mode !== "normal") return;
+
+    if (initialRun) return;
+
+    void loadDaily();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // DAILY: update countdown every second + detect day rollover (UTC)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    if (mode !== "normal" || puzzleKind === "random") {
+    const tick2 = () => {
+      const now = Date.now();
+      const msLeft = nextDailyUtcMs(new Date()) - now;
+      setNextDailyIn(formatCountdown(msLeft));
+
+      const idNow = utcDailyId();
+      if (idNow !== dailyId) {
+        setDailyId(idNow);
+        setDailyNum(dailyNumberFromId(idNow));
+
+        if (mode === "normal" && puzzleKind === "daily") {
+          void loadDaily();
+        }
+      }
+    };
+
+    tick2();
+    const t = window.setInterval(tick2, 1000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyId, mode, puzzleKind]);
+
+  // Persist run-state ONLY for Daily (normal mode)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (mode !== "normal" || puzzleKind !== "daily") {
       clearRunState();
       return;
     }
 
-saveRunState({
-  puzzleKind,
-  par,
-  grid,
-  initialGrid,
-  clicks,
-  elapsedMs,
-});
-  }, [mode, puzzleKind, par, grid, clicks, elapsedMs]);
+    saveRunState({
+      puzzleKind,
+      par,
+      grid,
+      initialGrid,
+      clicks,
+      elapsedMs,
+    });
+  }, [mode, puzzleKind, par, grid, initialGrid, clicks, elapsedMs]);
 
   // Stop timer on solve
   useEffect(() => {
     if (isSolved) stopTimer();
   }, [isSolved]);
 
-  // Save to local leaderboard once per solved run (normal mode only)
+  // Emit a one-shot solved run for Leaderboards (local save happens there)
   useEffect(() => {
-    if (mode !== "normal") return;
     if (!isSolved) return;
     if (savedThisRunRef.current) return;
-    if (puzzleKind === "solved") return;
 
     savedThisRunRef.current = true;
 
-    const kind = puzzleKind as Exclude<PuzzleKind, "solved">;
+    const kind: "daily" | "practice" = mode === "practice" ? "practice" : "daily";
 
-    const entry: LeaderboardEntry = {
+    setLastSolvedRun({
       kind,
       score: efficiencyScore,
       timeMs: Math.round(elapsedMs),
       clicks,
       par,
       iso: new Date().toISOString(),
-    };
-
-    setLeaderboards((prev) => {
-const next: Leaderboards = {
-  easy: [...prev.easy],
-  medium: [...prev.medium],
-  random: [...prev.random],
-  daily: [...prev.daily],
-};
-
-if (!(kind in next)) {
-  console.warn("[leaderboard] unknown kind, skip save:", kind);
-  return prev;
-}
-
-next[kind].push(entry);
-      next[kind].sort(sortEntries);
-      next[kind] = next[kind].slice(0, LEADERBOARD_SIZE);
-
-      saveLeaderboards(next);
-      return next;
     });
-  }, [mode, isSolved, puzzleKind, efficiencyScore, elapsedMs, clicks, par]);
-useEffect(() => {
-  // global leaderboard submit DISABLED for now
-  return;
-}, []);
-useEffect(() => {
-  if (mode !== "normal") return;
-  if (puzzleKind !== "daily") return;
-  if (!isSolved) return;
-  if (savedThisRunRef.current !== true) return; // una volta sola
+  }, [isSolved, mode, efficiencyScore, elapsedMs, clicks, par]);
 
-  // se ha già risposto in passato, non rompere più
-  const opt = globalOpt ?? (typeof window === "undefined" ? null : loadGlobalOpt());
-  if (opt) return;
+  // Open global opt-in modal ONLY after solving Daily (and only once ever)
+  useEffect(() => {
+    if (mode !== "normal") return;
+    if (puzzleKind !== "daily") return;
+    if (!isSolved) return;
+    if (savedThisRunRef.current !== true) return;
 
-  // apri la modal SOLO dopo aver risolto il daily
-  setIsGlobalOptOpen(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [mode, puzzleKind, isSolved, globalOpt]);
+    const opt = globalOpt ?? (typeof window === "undefined" ? null : loadGlobalOpt());
+    if (opt) return;
 
-useEffect(() => {
-  if (lbView !== "global") return;
-  // carica tutte e 3 (semplice e robusto)
-  fetchGlobal("easy");
-  fetchGlobal("medium");
-  fetchGlobal("random");
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [lbView]);
-// ESC closes modals + lock body scroll when any modal is open
-useEffect(() => {
-  function onKeyDown(e: KeyboardEvent) {
-if (e.key === "Escape") {
-  setIsVersionOpen(false);
-  setIsFeedbackOpen(false);
-  setIsShareOpen(false);
-  setIsHelpOpen(false);
-  setIsGlobalOptOpen(false);
-}
-  }
+    setIsGlobalOptOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, puzzleKind, isSolved, globalOpt]);
 
-  window.addEventListener("keydown", onKeyDown);
-
-const anyModalOpen =
-  isVersionOpen || isFeedbackOpen || isShareOpen || isHelpOpen || isGlobalOptOpen;  const prevOverflow = document.body.style.overflow;
-  if (anyModalOpen) document.body.style.overflow = "hidden";
-
-  return () => {
-    window.removeEventListener("keydown", onKeyDown);
-    document.body.style.overflow = prevOverflow;
-  };
-}, [isVersionOpen, isFeedbackOpen, isShareOpen, isHelpOpen, isGlobalOptOpen]);
-
-async function loadDaily() {
-  const todayId = utcDailyId(); // UTC date => same for everyone
-
-  // 1) Try cache first (keeps in-progress grid)
-  const cached = loadDailyState();
-
-  try {
-    const res = await fetch("/api/daily", { cache: "no-store" });
-    const data = await res.json();
-
-    if (!data?.ok) throw new Error("daily api not ok");
-
-    const apiDailyId = String(data.dailyId ?? todayId);
-    const apiPar = Number(data.par) || 0;
-    const apiGrid = (data.grid as Color[] | undefined)?.slice?.();
-
-    if (!apiGrid || apiGrid.length !== SIZE * SIZE) {
-      throw new Error("daily api grid invalid");
+  // ESC closes modals + lock body scroll when any modal is open
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setIsVersionOpen(false);
+        setIsFeedbackOpen(false);
+        setIsShareOpen(false);
+        setIsHelpOpen(false);
+        setIsGlobalOptOpen(false);
+      }
     }
 
-    // If cached matches today, keep player's progress grid, but API wins for par.
-    if (cached && cached.dailyId === apiDailyId) {
-      const merged: DailyState = {
-        dailyId: apiDailyId,
-        par: apiPar,
-        grid: cached.grid.slice(),
-        initialGrid:
-          cached.initialGrid?.length === SIZE * SIZE ? cached.initialGrid.slice() : apiGrid.slice(),
-      };
-      saveDailyState(merged);
+    window.addEventListener("keydown", onKeyDown);
 
-      setMode("normal");
-      setPuzzleKind("daily");
-      setPar(merged.par);
-      setInitialGrid(merged.initialGrid.slice());
-      setGrid(merged.grid.slice());
-    } else {
-      const fresh: DailyState = {
-        dailyId: apiDailyId,
-        par: apiPar,
-        grid: apiGrid.slice(),
-        initialGrid: apiGrid.slice(),
-      };
-      saveDailyState(fresh);
+    const anyModalOpen = isVersionOpen || isFeedbackOpen || isShareOpen || isHelpOpen || isGlobalOptOpen;
+    const prevOverflow = document.body.style.overflow;
+    if (anyModalOpen) document.body.style.overflow = "hidden";
 
-      setMode("normal");
-      setPuzzleKind("daily");
-      setPar(fresh.par);
-      setInitialGrid(fresh.initialGrid.slice());
-      setGrid(fresh.grid.slice());
-    }
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isVersionOpen, isFeedbackOpen, isShareOpen, isHelpOpen, isGlobalOptOpen]);
 
-    setClicks(0);
-    setElapsedMs(0);
-    stopTimer();
-    startTimeRef.current = null;
-    savedThisRunRef.current = false;
+  async function loadDaily() {
+    const todayId = utcDailyId();
+    const cached = loadDailyState();
 
-    return;
-  } catch (e) {
-    // Fallback A: cache (if same day)
-    if (cached && cached.dailyId === todayId) {
-      setMode("normal");
-      setPuzzleKind("daily");
-      setPar(cached.par);
-      setInitialGrid(cached.initialGrid.slice());
-      setGrid(cached.grid.slice());
+    try {
+      const res = await fetch("/api/daily", { cache: "no-store" });
+      const data = await res.json();
+
+      if (!data?.ok) throw new Error("daily api not ok");
+
+      const apiDailyId = String(data.dailyId ?? todayId);
+      const apiPar = Number(data.par) || 0;
+      const apiGrid = (data.grid as Color[] | undefined)?.slice?.();
+
+      if (!apiGrid || apiGrid.length !== SIZE * SIZE) {
+        throw new Error("daily api grid invalid");
+      }
+
+      if (cached && cached.dailyId === apiDailyId) {
+        const merged: DailyState = {
+          dailyId: apiDailyId,
+          par: apiPar,
+          grid: cached.grid.slice(),
+          initialGrid:
+            cached.initialGrid?.length === SIZE * SIZE ? cached.initialGrid.slice() : apiGrid.slice(),
+        };
+        saveDailyState(merged);
+
+        setMode("normal");
+        setPuzzleKind("daily");
+        setPar(merged.par);
+        setInitialGrid(merged.initialGrid.slice());
+        setGrid(merged.grid.slice());
+      } else {
+        const fresh: DailyState = {
+          dailyId: apiDailyId,
+          par: apiPar,
+          grid: apiGrid.slice(),
+          initialGrid: apiGrid.slice(),
+        };
+        saveDailyState(fresh);
+
+        setMode("normal");
+        setPuzzleKind("daily");
+        setPar(fresh.par);
+        setInitialGrid(fresh.initialGrid.slice());
+        setGrid(fresh.grid.slice());
+      }
+
       setClicks(0);
       setElapsedMs(0);
-
       stopTimer();
       startTimeRef.current = null;
       savedThisRunRef.current = false;
 
+      return;
+    } catch (e) {
+      if (cached && cached.dailyId === todayId) {
+        setMode("normal");
+        setPuzzleKind("daily");
+        setPar(cached.par);
+        setInitialGrid(cached.initialGrid.slice());
+        setGrid(cached.grid.slice());
+        setClicks(0);
+        setElapsedMs(0);
 
+        stopTimer();
+        startTimeRef.current = null;
+        savedThisRunRef.current = false;
+
+        return;
+      }
+
+      console.error("[daily] failed to load from /api/daily", e);
+      setMode("normal");
+      setPuzzleKind("daily");
       return;
     }
-
-   // No local fallback: Daily MUST come from Supabase via /api/daily.
-// If API fails and we don't have a valid cache, do nothing (keep current state).
-console.error("[daily] failed to load from /api/daily", e);
-
-setMode("normal");
-setPuzzleKind("daily");
-return;
   }
-}
-function loadPracticeWithPar(parTarget: number) {
-  const safePar = clamp(Math.floor(parTarget), 1, 20);
-  
-  // Strategy: "plant" exactly N distinct 1-clicks to create a puzzle,
-  // then compute its REAL min-PAR (may be <= planted count).
-  // We loop a bit to try to hit real PAR close to the requested value.
-  let bestGrid: Color[] | null = null;
-  let bestPar = Infinity;
 
-  for (let attempt = 0; attempt < 120; attempt++) {
-    const target = randomTargetColor();
+  function loadPracticeWithPar(parTarget: number) {
+    const safePar = clamp(Math.floor(parTarget), 1, 20);
 
-    // make a simple planted vector: safePar distinct 1-clicks (capped)
-    const k = clamp(safePar, 1, 25);
-    const vec = new Array<number>(SIZE * SIZE).fill(0);
-    // random distinct indices
-    const pool = Array.from({ length: SIZE * SIZE }, (_, i) => i);
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    for (let i = 0; i < k; i++) vec[pool[i]] = 1;
+    let bestGrid: Color[] | null = null;
+    let bestPar = Infinity;
 
-    const grid = gridFromSolution(target, vec);
-    const sol = minParSolutionToAnySolved(grid);
-    const realPar = sol.par;
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const target = randomTargetColor();
 
-    // prefer exact match, otherwise closest above/below
-    if (realPar === safePar) {
-      bestGrid = grid;
-      bestPar = realPar;
-      break;
+      const k = clamp(safePar, 1, 25);
+      const vec = new Array<number>(SIZE * SIZE).fill(0);
+
+      const pool = Array.from({ length: SIZE * SIZE }, (_, i) => i);
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      for (let i = 0; i < k; i++) vec[pool[i]] = 1;
+
+      const g = gridFromSolution(target, vec);
+      const sol = minParSolutionToAnySolved(g);
+      const realPar = sol.par;
+
+      if (realPar === safePar) {
+        bestGrid = g;
+        bestPar = realPar;
+        break;
+      }
+
+      if (Math.abs(realPar - safePar) < Math.abs(bestPar - safePar)) {
+        bestGrid = g;
+        bestPar = realPar;
+      }
     }
 
-    if (Math.abs(realPar - safePar) < Math.abs(bestPar - safePar)) {
-      bestGrid = grid;
-      bestPar = realPar;
-    }
+    const nextGrid =
+      bestGrid ?? gridFromSolution(randomTargetColor(), new Array(SIZE * SIZE).fill(0));
+
+    setPuzzleKind("practice");
+    setPar(safePar);
+    setInitialGrid(nextGrid.slice());
+    setGrid(nextGrid);
+    setClicks(0);
+    setElapsedMs(0);
+
+    stopTimer();
+    startTimeRef.current = null;
+    savedThisRunRef.current = false;
   }
 
-  const nextGrid = bestGrid ?? gridFromSolution(randomTargetColor(), new Array(SIZE * SIZE).fill(0));
-const computed = minParSolutionToAnySolved(nextGrid);
-void computed; // keep for future debugging if needed
+  function resetToInitial() {
+    setGrid(initialGrid.slice());
+    setClicks(0);
+    setElapsedMs(0);
 
-setPuzzleKind("random");
-setPar(safePar);
-  setInitialGrid(nextGrid.slice());
-  setGrid(nextGrid);
-  setClicks(0);
-  setElapsedMs(0);
-
-  stopTimer();
-  startTimeRef.current = null;
-  savedThisRunRef.current = false;
-}
-function resetToInitial() {
-  setGrid(initialGrid.slice());
-  setClicks(0);
-  setElapsedMs(0);
-
-  stopTimer();
-  startTimeRef.current = null;
-  savedThisRunRef.current = false;
-}
-
-function clearLeaderboards() {
-    const empty = emptyLeaderboards();
-    setLeaderboards(empty);
-    saveLeaderboards(empty);
-  }
-async function fetchGlobal(kind: GlobalKind) {
-    try {
-    setGlobalLbStatus("loading");
-
-    const res = await fetch(`/api/leaderboard?mode=${kind}&limit=${LEADERBOARD_SIZE}`);
-    if (!res.ok) throw new Error(`http_${res.status}`);
-
-    const data = (await res.json()) as { mode: string; items: GlobalScoreRow[] };
-
-    setGlobalLb((prev) => ({
-      ...prev,
-      [kind]: Array.isArray(data.items) ? data.items : [],
-    }));
-
-    setGlobalLbStatus("ready");
-  } catch {
-    setGlobalLbStatus("error");
-  }
-}
-
-
-
-
-function renderTable(kind: LocalKind, title: string) {
-      const rows = leaderboards[kind];
-
-    return (
-      <div style={cardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ fontSize: 16, letterSpacing: 0.2 }}>{title}</div>
-          <div style={{ opacity: 0.7, fontSize: 12 }}>Top {LEADERBOARD_SIZE}</div>
-        </div>
-
-        <div style={{ marginTop: 10, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ opacity: 0.7, textAlign: "left" }}>
-                <th style={{ padding: "8px 6px" }}>Rank</th>
-                <th style={{ padding: "8px 6px" }}>Efficiency</th>
-                <th style={{ padding: "8px 6px" }}>Time</th>
-                <th style={{ padding: "8px 6px" }}>Clicks</th>
-                <th style={{ padding: "8px 6px" }}>PAR</th>
-                <th style={{ padding: "8px 6px" }}>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ padding: "10px 6px", opacity: 0.7 }}>
-                    No entries yet.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((r, i) => (
-                  <tr key={`${r.iso}-${i}`} style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
-                    <td style={{ padding: "8px 6px" }}>{i + 1}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.score}</td>
-                    <td style={{ padding: "8px 6px" }}>{formatTimeMs(r.timeMs)}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.clicks}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.par}</td>
-                    <td style={{ padding: "8px 6px", opacity: 0.8 }}>
-                      {new Date(r.iso).toLocaleString()}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
+    stopTimer();
+    startTimeRef.current = null;
+    savedThisRunRef.current = false;
   }
 
   const isPractice = mode === "practice";
@@ -822,33 +633,33 @@ function renderTable(kind: LocalKind, title: string) {
         color: "#fff",
         fontFamily: "system-ui",
         padding: 6,
-paddingTop: isPractice ? 40 : 6,
-boxSizing: "border-box",
+        paddingTop: isPractice ? 40 : 6,
+        boxSizing: "border-box",
       }}
     >
-{isPractice ? (
-  <div
-    style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      height: 28,
-      background: "rgba(255,255,255,.14)",
-      borderBottom: "1px solid rgba(255,255,255,.18)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      letterSpacing: 2,
-      fontSize: 12,
-      fontWeight: 800,
-      zIndex: 40,
-      userSelect: "none",
-    }}
-  >
-    PRACTICE
-  </div>
-) : null}
+      {isPractice ? (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 28,
+            background: "rgba(255,255,255,.14)",
+            borderBottom: "1px solid rgba(255,255,255,.18)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            letterSpacing: 2,
+            fontSize: 12,
+            fontWeight: 800,
+            zIndex: 40,
+            userSelect: "none",
+          }}
+        >
+          PRACTICE
+        </div>
+      ) : null}
 
       {/* VERSION MODAL */}
       {isVersionOpen ? (
@@ -866,28 +677,24 @@ boxSizing: "border-box",
           }}
         >
           <div
-  onClick={(e) => e.stopPropagation()}
-  style={{
-    width: "min(680px, 92vw)",
-    maxHeight: "min(760px, 86vh)",
-    overflow: "auto",
-    borderRadius: 16,
-    border: "1px solid rgba(255,255,255,.14)",
-    background: "rgba(15,15,15,.96)",
-    boxShadow: "0 20px 80px rgba(0,0,0,.6)",
-    padding: 16,
-    position: "relative",
-  }}
->
-  <button
-  onClick={() => setIsVersionOpen(false)}
-  style={modalCloseStyle}
-  aria-label="Close"
->
-  ×
-</button>
-  
-   <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Version history</div>           
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(680px, 92vw)",
+              maxHeight: "min(760px, 86vh)",
+              overflow: "auto",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(15,15,15,.96)",
+              boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+              padding: 16,
+              position: "relative",
+            }}
+          >
+            <button onClick={() => setIsVersionOpen(false)} style={modalCloseStyle} aria-label="Close">
+              ×
+            </button>
+
+            <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Version history</div>
 
             <div style={{ opacity: 0.65, fontSize: 12, marginTop: 6 }}>
               Click outside or press ESC to close.
@@ -906,8 +713,7 @@ boxSizing: "border-box",
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                     <div style={{ fontSize: 14, letterSpacing: 0.2 }}>v{v.version}</div>
-                    <div style={{ fontSize: 12, opacity: 0.7 }}>
-{formatOnlineIso(v.deployedAtIso)}                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>{formatOnlineIso(v.deployedAtIso)}</div>
                   </div>
 
                   <ul style={{ margin: "10px 0 0 18px", padding: 0, opacity: 0.9, fontSize: 13 }}>
@@ -925,107 +731,103 @@ boxSizing: "border-box",
       ) : null}
 
       {/* SHARE MODAL */}
-{isShareOpen ? (
-  <div
-    onClick={() => setIsShareOpen(false)}
-    style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,.6)",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 16,
-      zIndex: 58,
-    }}
-  >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        width: "min(520px, 92vw)",
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,.14)",
-        background: "rgba(15,15,15,.96)",
-        boxShadow: "0 20px 80px rgba(0,0,0,.6)",
-        padding: 16,
-        position: "relative",
-      }}
-    >
-      <button
-  onClick={() => setIsShareOpen(false)}
-  style={modalCloseStyle}
-  aria-label="Close"
->
-  ×
-</button>
-<div style={{ fontSize: 18, letterSpacing: 0.2 }}>Share</div>
-
-      <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10, whiteSpace: "pre-wrap" }}>
-        {getShareText()}
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
-        <button
-          onClick={() => {
-            const text = getShareText();
-            navigator.clipboard.writeText(text);
-            alert("Copied!");
-            setIsShareOpen(false);
+      {isShareOpen ? (
+        <div
+          onClick={() => setIsShareOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.6)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
+            zIndex: 58,
           }}
-          style={btnStyle}
         >
-          Copy
-        </button>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, 92vw)",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(15,15,15,.96)",
+              boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+              padding: 16,
+              position: "relative",
+            }}
+          >
+            <button onClick={() => setIsShareOpen(false)} style={modalCloseStyle} aria-label="Close">
+              ×
+            </button>
+            <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Share</div>
 
-        <button
-          onClick={() => {
-            const text = getShareText();
-            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
-          }}
-          style={btnStyle}
-        >
-          WhatsApp
-        </button>
+            <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10, whiteSpace: "pre-wrap" }}>
+              {getShareText()}
+            </div>
 
-        <button
-          onClick={() => {
-            const text = getShareText();
-            window.open(`https://t.me/share/url?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
-          }}
-          style={btnStyle}
-        >
-          Telegram
-        </button>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
+              <button
+                onClick={() => {
+                  const text = getShareText();
+                  navigator.clipboard.writeText(text);
+                  alert("Copied!");
+                  setIsShareOpen(false);
+                }}
+                style={btnStyle}
+              >
+                Copy
+              </button>
 
-        <button
-          onClick={() => {
-            const text = getShareText();
-            window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
-          }}
-          style={btnStyle}
-        >
-          X
-        </button>
+              <button
+                onClick={() => {
+                  const text = getShareText();
+                  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+                }}
+                style={btnStyle}
+              >
+                WhatsApp
+              </button>
 
-        <button
-          onClick={() => {
-            const text = getShareText();
-            window.location.href = `mailto:?subject=${encodeURIComponent("BUNT RGB challenge")}&body=${encodeURIComponent(text)}`;
-          }}
-          style={btnStyle}
-        >
-          Email
-        </button>
-      </div>
+              <button
+                onClick={() => {
+                  const text = getShareText();
+                  window.open(`https://t.me/share/url?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+                }}
+                style={btnStyle}
+              >
+                Telegram
+              </button>
 
-      <div style={{ opacity: 0.6, fontSize: 12, marginTop: 12 }}>
-        Tip: click outside or press ESC to close.
-      </div>
-    </div>
-  </div>
-) : null}
+              <button
+                onClick={() => {
+                  const text = getShareText();
+                  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+                }}
+                style={btnStyle}
+              >
+                X
+              </button>
 
-{/* FEEDBACK MODAL (Tally iframe) */}
+              <button
+                onClick={() => {
+                  const text = getShareText();
+                  window.location.href = `mailto:?subject=${encodeURIComponent("BUNT RGB challenge")}&body=${encodeURIComponent(text)}`;
+                }}
+                style={btnStyle}
+              >
+                Email
+              </button>
+            </div>
+
+            <div style={{ opacity: 0.6, fontSize: 12, marginTop: 12 }}>
+              Tip: click outside or press ESC to close.
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* FEEDBACK MODAL (Tally iframe) */}
       {isFeedbackOpen ? (
         <div
           onClick={() => setIsFeedbackOpen(false)}
@@ -1049,14 +851,10 @@ boxSizing: "border-box",
               overflow: "hidden",
               background: "#fff",
               boxShadow: "0 20px 80px rgba(0,0,0,.6)",
-               position: "relative",
+              position: "relative",
             }}
           >
-            <button
-              onClick={() => setIsFeedbackOpen(false)}
-              style={modalCloseStyle}
-              aria-label="Close"
-            >
+            <button onClick={() => setIsFeedbackOpen(false)} style={modalCloseStyle} aria-label="Close">
               ×
             </button>
             <iframe
@@ -1067,141 +865,136 @@ boxSizing: "border-box",
               style={{ border: "none" }}
               title="BUNT RGB Anonymous Feedback"
             />
-            
           </div>
         </div>
       ) : null}
 
-{/* HELP MODAL */}
-{isHelpOpen ? (
-  <div
-    onClick={() => setIsHelpOpen(false)}
-    style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,.6)",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 16,
-      zIndex: 59,
-    }}
-  >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        width: "min(420px, 92vw)",
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,.14)",
-        background: "rgba(15,15,15,.96)",
-        boxShadow: "0 20px 80px rgba(0,0,0,.6)",
-        padding: 16,
-        position: "relative",
-      }}
-    >
-      <button onClick={() => setIsHelpOpen(false)} style={modalCloseStyle} aria-label="Close">
-        ×
-      </button>
-
-      <div style={{ fontSize: 18, letterSpacing: 0.2 }}>How it works</div>
-
-      <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10 }}>
-        Click a tile: the 8 surrounding tiles change color.
-      </div>
-
-      
-    </div>
-  </div>
-) : null}
-{/* GLOBAL SAVE OPT-IN MODAL */}
-{isGlobalOptOpen ? (
-  <div
-    onClick={() => setIsGlobalOptOpen(false)}
-    style={{
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,.6)",
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 16,
-      zIndex: 61,
-    }}
-  >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        width: "min(520px, 92vw)",
-        borderRadius: 16,
-        border: "1px solid rgba(255,255,255,.14)",
-        background: "rgba(15,15,15,.96)",
-        boxShadow: "0 20px 80px rgba(0,0,0,.6)",
-        padding: 16,
-        position: "relative",
-      }}
-    >
-      <button onClick={() => setIsGlobalOptOpen(false)} style={modalCloseStyle} aria-label="Close">
-        ×
-      </button>
-
-      <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Save score online?</div>
-      <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10 }}>
-        You’ll appear in the Global Leaderboard. Nickname is optional.
-      </div>
-
-      <div style={{ marginTop: 12 }}>
-        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Nickname (optional)</div>
-        <input
-          value={nickname}
-          onChange={(e) => {
-            setNickname(e.target.value);
-          }}
-          placeholder="e.g. axiomizer"
+      {/* HELP MODAL */}
+      {isHelpOpen ? (
+        <div
+          onClick={() => setIsHelpOpen(false)}
           style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,.18)",
-            background: "rgba(255,255,255,.06)",
-            color: "#fff",
-            outline: "none",
-            boxSizing: "border-box",
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.6)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
+            zIndex: 59,
           }}
-        />
-      </div>
-
-      <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end", flexWrap: "wrap" }}>
-        <button
-          onClick={() => {
-            saveGlobalOpt("no");
-            setGlobalOpt("no");
-            setIsGlobalOptOpen(false);
-            pendingGlobalKindRef.current = null;
-          }}
-          style={btnStyle}
         >
-          No thanks
-        </button>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(420px, 92vw)",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(15,15,15,.96)",
+              boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+              padding: 16,
+              position: "relative",
+            }}
+          >
+            <button onClick={() => setIsHelpOpen(false)} style={modalCloseStyle} aria-label="Close">
+              ×
+            </button>
 
-        <button
-          onClick={() => {
-            const nn = nickname.trim();
-            saveNickname(nn);
-            saveGlobalOpt("yes");
-            setGlobalOpt("yes");
-            setIsGlobalOptOpen(false);
+            <div style={{ fontSize: 18, letterSpacing: 0.2 }}>How it works</div>
 
-pendingGlobalKindRef.current = null;
-// daily: per ora non inviamo nulla al server
+            <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10 }}>
+              Click a tile: the 8 surrounding tiles change color.
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* GLOBAL SAVE OPT-IN MODAL */}
+      {isGlobalOptOpen ? (
+        <div
+          onClick={() => setIsGlobalOptOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.6)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
+            zIndex: 61,
           }}
-          style={{ ...btnStyle, background: "#fff", color: "#000" }}
         >
-          Save
-        </button>
-      </div>
-    </div>
-  </div>
-) : null}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, 92vw)",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(15,15,15,.96)",
+              boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+              padding: 16,
+              position: "relative",
+            }}
+          >
+            <button onClick={() => setIsGlobalOptOpen(false)} style={modalCloseStyle} aria-label="Close">
+              ×
+            </button>
+
+            <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Save score online?</div>
+            <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10 }}>
+              You’ll appear in the Global Leaderboard. Nickname is optional.
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Nickname (optional)</div>
+              <input
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="e.g. axiomizer"
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.18)",
+                  background: "rgba(255,255,255,.06)",
+                  color: "#fff",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button
+                onClick={() => {
+                  saveGlobalOpt("no");
+                  setGlobalOpt("no");
+                  setIsGlobalOptOpen(false);
+                }}
+                style={btnStyle}
+              >
+                No thanks
+              </button>
+
+              <button
+                onClick={() => {
+                  const nn = nickname.trim();
+                  saveNickname(nn);
+                  saveGlobalOpt("yes");
+                  setGlobalOpt("yes");
+                  setIsGlobalOptOpen(false);
+
+                  // submit is disabled for now (read-only global)
+                }}
+                style={{ ...btnStyle, background: "#fff", color: "#000" }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* GAME */}
       <div
         style={{
@@ -1215,508 +1008,350 @@ pendingGlobalKindRef.current = null;
       >
         <div style={{ textAlign: "center", width: "100%" }}>
           {/* TOP CENTER: version + status + links */}
-<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginTop: 6 }}>
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      fontSize: 11,
-      opacity: 0.75,
-    }}
-  >
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => setIsVersionOpen(true)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") setIsVersionOpen(true);
-      }}
-      style={{
-        cursor: "pointer",
-        textDecoration: "underline",
-        userSelect: "none",
-        opacity: 0.95,
-      }}
-      title="Open version history"
-    >
-      v{APP_VERSION}
-    </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, marginTop: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, opacity: 0.75 }}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setIsVersionOpen(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") setIsVersionOpen(true);
+                }}
+                style={{
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  userSelect: "none",
+                  opacity: 0.95,
+                }}
+                title="Open version history"
+              >
+                v{APP_VERSION}
+              </div>
 
-    <div style={{ opacity: 0.6 }}>•</div>
+              <div style={{ opacity: 0.6 }}>•</div>
 
-    <div style={{ opacity: 0.85 }}>{APP_STATUS}</div>
-  </div>
+              <div style={{ opacity: 0.85 }}>{APP_STATUS}</div>
+            </div>
 
-<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-  <a
-    href="https://bunt-rgb.com/"
-    target="_blank"
-    rel="noopener noreferrer"
-    style={topLinkStyle}
-    title="Official website"
-  >
-    Official
-    <br />
-    Website
-  </a>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+              <a
+                href="https://bunt-rgb.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={topLinkStyle}
+                title="Official website"
+              >
+                Official
+                <br />
+                Website
+              </a>
 
-  <a
-    href="https://www.youtube.com/@BuntRGB"
-    target="_blank"
-    rel="noopener noreferrer"
-    style={topLinkStyle}
-    title="Follow my devlog journey"
-  >
-    Follow my
-    <br />
-    Devlog
-  </a>
+              <a
+                href="https://www.youtube.com/@BuntRGB"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={topLinkStyle}
+                title="Follow my devlog journey"
+              >
+                Follow my
+                <br />
+                Devlog
+              </a>
 
-  <button
-    onClick={() => setIsFeedbackOpen(true)}
-    style={topLinkStyle}
-    title="Send anonymous feedback"
-  >
-    Send
-    <br />
-    Feedback
-  </button>
-</div>
-</div>
-
+              <button onClick={() => setIsFeedbackOpen(true)} style={topLinkStyle} title="Send anonymous feedback">
+                Send
+                <br />
+                Feedback
+              </button>
+            </div>
+          </div>
 
           <h1 style={{ margin: "3px 0 0 0", fontSize: 66, letterSpacing: 1 }}>BUNT RGB</h1>
 
-<div style={{ opacity: 0.8, marginTop: -10, fontSize: 27, letterSpacing: 2 }}>
-  A DAILY PUZZLE GAME
-</div>
+          <div style={{ opacity: 0.8, marginTop: -10, fontSize: 27, letterSpacing: 2 }}>
+            A DAILY PUZZLE GAME
+          </div>
 
-<div style={{ opacity: 0.7, marginTop: -3, fontSize: 11, letterSpacing: 2 }}>
-  DAILY SCRAMBLE #{String(dailyNum).padStart(4, "0")} • NEXT IN {nextDailyIn}
-</div>
+          <div style={{ opacity: 0.7, marginTop: -3, fontSize: 11, letterSpacing: 2 }}>
+            DAILY SCRAMBLE #{String(dailyNum).padStart(4, "0")} • NEXT IN {nextDailyIn}
+          </div>
 
-<div style={{ opacity: 0.85, marginTop: 12, fontSize: 18 }}>
-  Make all tiles the same color
-</div>
+          <div style={{ opacity: 0.85, marginTop: 12, fontSize: 18 }}>Make all tiles the same color</div>
 
+          <div
+            style={{
+              opacity: 0.9,
+              marginTop: 14,
+              display: "flex",
+              gap: 18,
+              justifyContent: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Time</div>
+              <div style={{ fontSize: 20 }}>{formatTimeMs(elapsedMs)}</div>
+            </div>
 
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Clicks</div>
+              <div style={{ fontSize: 20 }}>{clicks}</div>
+            </div>
 
-<div
-  style={{
-    opacity: 0.9,
-    marginTop: 14,
-    display: "flex",
-    gap: 18,
-    justifyContent: "center",
-    flexWrap: "wrap",
-  }}
->
-  <div>
-    <div style={{ fontSize: 12, opacity: 0.7 }}>Time</div>
-    <div style={{ fontSize: 20 }}>{formatTimeMs(elapsedMs)}</div>
-  </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>PAR</div>
+              <div style={{ fontSize: 20 }}>{par}</div>
+            </div>
 
-  <div>
-    <div style={{ fontSize: 12, opacity: 0.7 }}>Clicks</div>
-    <div style={{ fontSize: 20 }}>{clicks}</div>
-  </div>
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Efficiency</div>
+              <div style={{ fontSize: 20 }}>{efficiencyScore}</div>
+            </div>
+          </div>
 
-  <div>
-    <div style={{ fontSize: 12, opacity: 0.7 }}>PAR</div>
-    <div style={{ fontSize: 20 }}>{par}</div>
-  </div>
+          <div style={{ marginTop: 10, opacity: 0.9 }}>{isSolved ? "✅ Solved" : ""}</div>
+        </div>
 
-  <div>
-    <div style={{ fontSize: 12, opacity: 0.7 }}>Efficiency</div>
-    <div style={{ fontSize: 20 }}>{efficiencyScore}</div>
-  </div>
-</div>
+        <div style={{ position: "relative", display: "inline-block" } as React.CSSProperties}>
+          {/* HELP BUTTON (outside, left) */}
+          <button
+            onClick={() => setIsHelpOpen(true)}
+            aria-label="Help"
+            title="Help"
+            style={{
+              position: "absolute",
+              top: 6,
+              left: -58,
+              width: 32,
+              height: 32,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,.35)",
+              background: "rgba(0,0,0,.55)",
+              color: "#fff",
+              fontSize: 18,
+              fontWeight: 800,
+              lineHeight: "32px",
+              padding: 0,
+              cursor: "pointer",
+              textAlign: "center",
+              zIndex: 199,
+              display: "block",
+            }}
+          >
+            {"?"}
+          </button>
 
-
-          <div style={{ marginTop: 10, opacity: 0.9 }}>
-            {isSolved ? "✅ Solved" : ""}
+          {/* GRID */}
+          <div
+            style={
+              {
+                "--tile": "clamp(44px, 12vw, 60px)",
+                "--gap": "clamp(4px, 1.6vw, 6px)",
+                display: "grid",
+                gridTemplateColumns: `repeat(${SIZE}, var(--tile))`,
+                gap: "var(--gap)",
+                filter: "none",
+              } as React.CSSProperties
+            }
+          >
+            {grid.map((color, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  if (isSolved) return;
+                  if (!isPractice) startTimerIfNeeded();
+                  setGrid((prev) => applyMove(prev, index));
+                  setClicks((c) => c + 1);
+                }}
+                style={{
+                  width: "var(--tile)",
+                  height: "var(--tile)",
+                  background: TILE_COLORS[color],
+                  borderRadius: 8,
+                  border: "none",
+                  padding: 0,
+                  cursor: isSolved ? "default" : "pointer",
+                  outline: "1px solid rgba(255,255,255,.08)",
+                }}
+                aria-label={`cell-${index}`}
+              />
+            ))}
           </div>
         </div>
-<div
-  style={
-    {
-      position: "relative",
-      display: "inline-block",
-    } as React.CSSProperties
-  }
->
-  {/* HELP BUTTON (fuori, a sinistra) */}
-  <button
-    onClick={() => setIsHelpOpen(true)}
-    aria-label="Help"
-    title="Help"
-    style={{
-      position: "absolute",
-      top: 6,
-      left: -58, // <-- spinge fuori a sinistra
-      width: 32,
-      height: 32,
-      borderRadius: 999,
-      border: "1px solid rgba(255,255,255,.35)",
-      background: "rgba(0,0,0,.55)",
-      color: "#fff",
-      fontSize: 18,
-      fontWeight: 800,
-      lineHeight: "32px",
-      padding: 0,
-      cursor: "pointer",
-      textAlign: "center",
-      zIndex: 199,
-      display: "block",
-    }}
-  >
-    {"?"}
-  </button>
 
-  {/* GRID */}
-  <div
-    style={
-      {
-        "--tile": "clamp(44px, 12vw, 60px)",
-        "--gap": "clamp(4px, 1.6vw, 6px)",
-        display: "grid",
-        gridTemplateColumns: `repeat(${SIZE}, var(--tile))`,
-        gap: "var(--gap)",
-        filter: "none",
-      } as React.CSSProperties
-    }
-  >
-    {grid.map((color, index) => (
-      <button
-        key={index}
-        onClick={() => {
-          if (isSolved) return;
-          if (!isPractice) startTimerIfNeeded();
-          setGrid((prev) => applyMove(prev, index));
-          setClicks((c) => c + 1);
-        }}
-        style={{
-          width: "var(--tile)",
-          height: "var(--tile)",
-          background: TILE_COLORS[color],
-          borderRadius: 8,
-          border: "none",
-          padding: 0,
-          cursor: isSolved ? "default" : "pointer",
-          outline: "1px solid rgba(255,255,255,.08)",
-        }}
-        aria-label={`cell-${index}`}
-      />
-    ))}
-  </div>
-</div>
+        {/* BUTTONS */}
+        {isPractice ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+            <div
+              style={{
+                width: "min(520px, 92vw)",
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,.10)",
+                background: "rgba(255,255,255,.04)",
+                padding: 12,
+              }}
+            >
+              <div style={{ marginTop: 10, textAlign: "center", fontSize: 16, fontWeight: 900, letterSpacing: 0.6 }}>
+                PAR = {practicePar}
+              </div>
 
-{/* BUTTONS */}
-{isPractice ? (
-  <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-    <div
-      style={{
-        width: "min(520px, 92vw)",
-        borderRadius: 14,
-        border: "1px solid rgba(255,255,255,.10)",
-        background: "rgba(255,255,255,.04)",
-        padding: 12,
-      }}
-    >
+              <div style={{ marginTop: 10 }}>
+                <input
+                  className="parSlider"
+                  type="range"
+                  min={1}
+                  max={20}
+                  step={1}
+                  value={practicePar}
+                  onChange={(e) => setPracticePar(Number(e.target.value))}
+                  aria-label="Practice difficulty (PAR)"
+                  style={{
+                    ["--track" as any]: `hsl(${Math.round(120 - ((practicePar - 1) / 19) * 120)} 100% 45%)`,
+                  }}
+                />
 
-
-      <div style={{ marginTop: 10, textAlign: "center", fontSize: 16, fontWeight: 900, letterSpacing: 0.6 }}>
-        PAR = {practicePar}
-      </div>
-
-<div style={{ marginTop: 10 }}>
-  <input
-    className="parSlider"
-    type="range"
-    min={1}
-    max={20}
-    step={1}
-    value={practicePar}
-    onChange={(e) => setPracticePar(Number(e.target.value))}
-    aria-label="Practice difficulty (PAR)"
-    style={{
-      ["--track" as any]: `hsl(${Math.round(
-        120 - ((practicePar - 1) / 19) * 120
-      )} 100% 45%)`,
-    }}
-  />
-
-  <div
-    style={{
-      marginTop: 8,
-      display: "flex",
-      justifyContent: "space-between",
-      fontSize: 12,
-      letterSpacing: 2,
-      fontWeight: 800,
-      opacity: 0.75,
-      userSelect: "none",
-    }}
-  >
-    <div>EASY</div>
-    <div>HARD</div>
-  </div>
-</div>
-
-      <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-        <button onClick={() => loadPracticeWithPar(practicePar)} style={btnStyle}>
-          Generate
-        </button>
-
-        <button onClick={resetToInitial} style={resetBtnStyle}>
-          Reset
-        </button>
-      </div>
-
-      <style>{`
-        .parSlider{
-  width: 100%;
-  height: 14px;
-  border-radius: 999px;
-  outline: none;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  background: var(--track, #00d500);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
-}
-
-.parSlider::-webkit-slider-thumb{
-  -webkit-appearance: none;
-  appearance: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  background: #ffffff;
-  border: 2px solid rgba(0,0,0,.65);
-  box-shadow: 0 8px 18px rgba(0,0,0,.45);
-}
-
-.parSlider::-moz-range-thumb{
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  background: #ffffff;
-  border: 2px solid rgba(0,0,0,.65);
-  box-shadow: 0 8px 18px rgba(0,0,0,.45);
-}
-      `}</style>
-    </div>
-
-<button
-  onClick={() => {
-    setMode("normal");
-    loadDaily(); // torna al Daily, non inventare PuzzleKind
-  }}
-  style={backBtnStyle}
->
-  Back
-</button>
-  </div>
-) : (
-  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-<div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-  <button onClick={resetToInitial} style={resetBtnStyle}>
-    Reset
-  </button>
-</div>
-
-    <div style={{ display: "flex", gap: 10, justifyContent: "center", width: "100%" }}>
-      <button
-        onClick={() => setIsShareOpen(true)}
-        style={{
-          ...practiceBtnStyle,
-          fontSize: 14,
-          letterSpacing: 1.2,
-          fontWeight: 800,
-          padding: "12px 18px",
-          flex: 1,
-          maxWidth: 260,
-        }}
-      >
-        SHARE
-      </button>
-
-      <button
-        onClick={() => {
-          setMode("practice");
-          loadPracticeWithPar(practicePar);
-        }}
-        style={{
-          ...practiceBtnStyle,
-          flex: 1,
-          maxWidth: 260,
-        }}
-      >
-        PRACTICE MODE
-      </button>
-    </div>
-  </div>
-)}
-
-       {/* LEADERBOARDS (normal only) */}
-{isPractice ? null : (
-  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 12 }}>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
-      <h2 style={{ margin: "0 0 6px 0", fontSize: 20, letterSpacing: 0.4, opacity: 0.9 }}>
-        Leaderboards
-      </h2>
-
-      <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={() => setLbView("local")}
-          style={{
-            ...btnStyle,
-            padding: "8px 10px",
-            fontSize: 12,
-            background: lbView === "local" ? "#fff" : "rgba(255,255,255,.06)",
-            color: lbView === "local" ? "#000" : "#fff",
-          }}
-        >
-          Local
-        </button>
-        <button
-          onClick={() => setLbView("global")}
-          style={{
-            ...btnStyle,
-            padding: "8px 10px",
-            fontSize: 12,
-            background: lbView === "global" ? "#fff" : "rgba(255,255,255,.06)",
-            color: lbView === "global" ? "#000" : "#fff",
-          }}
-        >
-          Global
-        </button>
-      </div>
-    </div>
-
-    {lbView === "local" ? (
-      <>
-       {renderTable("daily", "Local Leaderboard — Daily")}
-        {renderTable("easy", "Local Leaderboard — Easy")}
-        {renderTable("medium", "Local Leaderboard — Medium")}
-        {renderTable("random", "Local Leaderboard — Random")}
-
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
-          <button onClick={clearLeaderboards} style={btnStyle}>
-            Clear local scores
-          </button>
-        </div>
-
-        <div style={{ opacity: 0.55, fontSize: 12, marginTop: 10, textAlign: "center" }}>
-          Stored locally in this browser only.
-        </div>
-      </>
-    ) : (
-      <>
-        <div style={{ opacity: 0.65, fontSize: 12, marginTop: -4 }}>
-          {globalLbStatus === "loading" ? "Loading global scores..." : null}
-          {globalLbStatus === "error" ? "Global leaderboard unavailable." : null}
-        </div>
-        <div style={{ opacity: 0.65, fontSize: 12, marginTop: 6 }}>
-  {globalSaveStatus === "saving" ? "Saving score..." : null}
-  {globalSaveStatus === "saved" ? "Score saved." : null}
-  {globalSaveStatus === "error" ? "Score not saved." : null}
-</div>
-
-        {(() => {
-          const renderGlobalTable = (kind: GlobalKind, title: string) => {
-            const rows: GlobalScoreRow[] = globalLb[kind] ?? [];
-
-            return (
-              <div style={cardStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ fontSize: 16, letterSpacing: 0.2 }}>{title}</div>
-                  <div style={{ opacity: 0.7, fontSize: 12 }}>Top {LEADERBOARD_SIZE}</div>
-                </div>
-
-                <div style={{ marginTop: 10, overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ opacity: 0.7, textAlign: "left" }}>
-                        <th style={{ padding: "8px 6px" }}>Rank</th>
-                        <th style={{ padding: "8px 6px" }}>Player</th>
-                        <th style={{ padding: "8px 6px" }}>Efficiency</th>
-                        <th style={{ padding: "8px 6px" }}>Time</th>
-                        <th style={{ padding: "8px 6px" }}>Clicks</th>
-                        <th style={{ padding: "8px 6px" }}>PAR</th>
-                        <th style={{ padding: "8px 6px" }}>Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} style={{ padding: "10px 6px", opacity: 0.7 }}>
-                            No entries yet.
-                          </td>
-                        </tr>
-                      ) : (
-                        rows.map((r, i) => (
-                          <tr key={`${r.created_at}-${i}`} style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
-                            <td style={{ padding: "8px 6px" }}>{i + 1}</td>
-                            <td style={{ padding: "8px 6px" }}>{r.nickname ?? "anon"}</td>
-                            <td style={{ padding: "8px 6px" }}>{r.efficiency_score}</td>
-                            <td style={{ padding: "8px 6px" }}>{formatTimeMs(r.time_ms)}</td>
-                            <td style={{ padding: "8px 6px" }}>{r.clicks}</td>
-                            <td style={{ padding: "8px 6px" }}>{r.par}</td>
-                            <td style={{ padding: "8px 6px", opacity: 0.8 }}>
-                              {new Date(r.created_at).toLocaleString()}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                <div
+                  style={{
+                    marginTop: 8,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 12,
+                    letterSpacing: 2,
+                    fontWeight: 800,
+                    opacity: 0.75,
+                    userSelect: "none",
+                  }}
+                >
+                  <div>EASY</div>
+                  <div>HARD</div>
                 </div>
               </div>
-            );
-          };
 
-          return (
-            <>
-              {renderGlobalTable("easy", "Global Leaderboard — Easy")}
-              {renderGlobalTable("medium", "Global Leaderboard — Medium")}
-              {renderGlobalTable("random", "Global Leaderboard — Random")}
-            </>
-          );
-        })()}
+              <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                <button onClick={() => loadPracticeWithPar(practicePar)} style={btnStyle}>
+                  Generate
+                </button>
 
-        <div style={{ opacity: 0.55, fontSize: 12, marginTop: 10, textAlign: "center" }}>
-          Stored globally on server (nickname optional).
-        </div>
-      </>
-    )}
-  </div>
-)}
+                <button onClick={resetToInitial} style={resetBtnStyle}>
+                  Reset
+                </button>
+              </div>
+
+              <style>{`
+                .parSlider{
+                  width: 100%;
+                  height: 14px;
+                  border-radius: 999px;
+                  outline: none;
+                  cursor: pointer;
+                  appearance: none;
+                  -webkit-appearance: none;
+                  background: var(--track, #00d500);
+                  box-shadow: inset 0 0 0 1px rgba(255,255,255,.18);
+                }
+
+                .parSlider::-webkit-slider-thumb{
+                  -webkit-appearance: none;
+                  appearance: none;
+                  width: 22px;
+                  height: 22px;
+                  border-radius: 999px;
+                  background: #ffffff;
+                  border: 2px solid rgba(0,0,0,.65);
+                  box-shadow: 0 8px 18px rgba(0,0,0,.45);
+                }
+
+                .parSlider::-moz-range-thumb{
+                  width: 22px;
+                  height: 22px;
+                  border-radius: 999px;
+                  background: #ffffff;
+                  border: 2px solid rgba(0,0,0,.65);
+                  box-shadow: 0 8px 18px rgba(0,0,0,.45);
+                }
+              `}</style>
+            </div>
+
+            <button
+              onClick={() => {
+                setMode("normal");
+                void loadDaily();
+              }}
+              style={backBtnStyle}
+            >
+              Back
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+              <button onClick={resetToInitial} style={resetBtnStyle}>
+                Reset
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", width: "100%" }}>
+              <button
+                onClick={() => setIsShareOpen(true)}
+                style={{
+                  ...practiceBtnStyle,
+                  fontSize: 14,
+                  letterSpacing: 1.2,
+                  fontWeight: 800,
+                  padding: "12px 18px",
+                  flex: 1,
+                  maxWidth: 260,
+                }}
+              >
+                SHARE
+              </button>
+
+              <button
+                onClick={() => {
+                  setMode("practice");
+                  setPuzzleKind("practice");
+                  loadPracticeWithPar(practicePar);
+                }}
+                style={{
+                  ...practiceBtnStyle,
+                  flex: 1,
+                  maxWidth: 260,
+                }}
+              >
+                PRACTICE MODE
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* LEADERBOARDS */}
+        <Leaderboards
+          mode={mode}
+          practicePar={practicePar}
+          lastSolvedRun={lastSolvedRun}
+          onConsumeSolvedRun={() => setLastSolvedRun(null)}
+        />
+
+        {/* FOOTER BUILD INFO */}
         <div
-  style={{
-    width: "100%",
-    textAlign: "center",
-    fontSize: 10,
-    opacity: 0.45,
-    marginTop: 0,
-    paddingBottom: 20,
-  }}
->
-  {BUILD_INFO.vercelEnv} • {BUILD_INFO.gitBranch} •EM•{" "}
-  {BUILD_INFO.gitSha === "local"
-    ? "local"
-    : BUILD_INFO.gitSha.slice(0, 7)}{" "}
-  •{" "}
-  {BUILD_INFO.builtAtIso === "local"
-    ? ""
-    : new Date(BUILD_INFO.builtAtIso).toLocaleString()}
-</div>
+          style={{
+            width: "100%",
+            textAlign: "center",
+            fontSize: 10,
+            opacity: 0.45,
+            marginTop: 0,
+            paddingBottom: 20,
+          }}
+        >
+          {BUILD_INFO.vercelEnv} • {BUILD_INFO.gitBranch} •EM•{" "}
+          {BUILD_INFO.gitSha === "local" ? "local" : BUILD_INFO.gitSha.slice(0, 7)} •{" "}
+          {BUILD_INFO.builtAtIso === "local" ? "" : new Date(BUILD_INFO.builtAtIso).toLocaleString()}
+        </div>
       </div>
     </div>
   );
 }
+
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { error: Error | null; info: string }
@@ -1744,13 +1379,9 @@ class ErrorBoundary extends React.Component<
             boxSizing: "border-box",
           }}
         >
-          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 10 }}>
-            App crashed (runtime error)
-          </div>
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 10 }}>App crashed (runtime error)</div>
 
-          <div style={{ opacity: 0.85, marginBottom: 8 }}>
-            {String(this.state.error)}
-          </div>
+          <div style={{ opacity: 0.85, marginBottom: 8 }}>{String(this.state.error)}</div>
 
           <pre
             style={{
