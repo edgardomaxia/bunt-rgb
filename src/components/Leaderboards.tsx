@@ -1,3 +1,4 @@
+// src/components/Leaderboards.tsx
 import React, { useEffect, useMemo, useState } from "react";
 
 export type LastSolvedRun = {
@@ -99,11 +100,14 @@ async function fetchGlobalPractice(par: number, limit: number): Promise<GlobalRo
 export default function Leaderboards(props: {
   visible: boolean;
   lastSolvedRun: LastSolvedRun | null;
+  practicePar: number;
+  onPracticeParChange: (p: number) => void;
 }) {
-  const { visible, lastSolvedRun } = props;
+  const { visible, lastSolvedRun, practicePar, onPracticeParChange } = props;
 
-const [view, setView] = useState<"global" | "local">("local");
-  const [practicePar, setPracticePar] = useState<number>(5);
+  const [view, setView] = useState<"global" | "local">("global"); // default GLOBAL
+  // Leaderboards keeps a local copy, but stays synced with App (two-way)
+  const [practiceParLocal, setPracticeParLocal] = useState<number>(practicePar);
 
   const [local, setLocal] = useState<LocalStore>(() =>
     typeof window === "undefined" ? emptyLocal() : loadLocal()
@@ -118,10 +122,22 @@ const [view, setView] = useState<"global" | "local">("local");
     "idle"
   );
 
+  // Sync from App -> Leaderboards (slider in Practice drives the filter)
+  useEffect(() => {
+    setPracticeParLocal(practicePar);
+  }, [practicePar]);
+
   // 1) SAVE LOCAL on solved run (Daily + Practice-by-PAR)
   useEffect(() => {
     if (!lastSolvedRun) return;
     if (typeof window === "undefined") return;
+
+    // If just solved a practice run, auto-select that PAR everywhere
+    if (lastSolvedRun.kind === "practice") {
+      const p = clamp(Math.floor(lastSolvedRun.par), 1, 20);
+      setPracticeParLocal(p);
+      onPracticeParChange(p);
+    }
 
     setLocal((prev) => {
       const next: LocalStore = {
@@ -144,7 +160,7 @@ const [view, setView] = useState<"global" | "local">("local");
       saveLocal(next);
       return next;
     });
-  }, [lastSolvedRun]);
+  }, [lastSolvedRun, onPracticeParChange]);
 
   // 2) LOAD GLOBAL when view=global (non rompe se API non pronta)
   useEffect(() => {
@@ -160,14 +176,14 @@ const [view, setView] = useState<"global" | "local">("local");
         // Prova a chiamare le nuove API (se non esistono ancora -> "unavailable")
         const [daily, practice] = await Promise.all([
           fetchGlobalDaily(LEADERBOARD_SIZE),
-          fetchGlobalPractice(practicePar, LEADERBOARD_SIZE),
+          fetchGlobalPractice(practiceParLocal, LEADERBOARD_SIZE),
         ]);
 
         if (!alive) return;
 
         setGlobal({
           daily,
-          practiceByPar: { [String(practicePar)]: practice },
+          practiceByPar: { [String(practiceParLocal)]: practice },
         });
 
         setGlobalStatus("ready");
@@ -180,7 +196,7 @@ const [view, setView] = useState<"global" | "local">("local");
     return () => {
       alive = false;
     };
-  }, [view, practicePar]);
+  }, [view, practiceParLocal]);
 
   const cardStyle: React.CSSProperties = useMemo(
     () => ({
@@ -262,21 +278,34 @@ const [view, setView] = useState<"global" | "local">("local");
   }
 
   function renderLocalPractice() {
-    const key = String(practicePar);
+    const key = String(practiceParLocal);
     const rows = Array.isArray(local.practiceByPar[key]) ? local.practiceByPar[key] : [];
 
     return (
       <div style={cardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-          <div style={{ fontSize: 16, letterSpacing: 0.2 }}>Local — Practice (PAR {practicePar})</div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+          }}
+        >
+          <div style={{ fontSize: 16, letterSpacing: 0.2 }}>
+            Local — Practice (PAR {practiceParLocal})
+          </div>
           <div style={{ opacity: 0.7, fontSize: 12 }}>Top {LEADERBOARD_SIZE}</div>
         </div>
 
         <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ fontSize: 12, opacity: 0.7 }}>Filter PAR</div>
           <select
-            value={practicePar}
-            onChange={(e) => setPracticePar(Number(e.target.value))}
+            value={practiceParLocal}
+            onChange={(e) => {
+              const p = Number(e.target.value);
+              setPracticeParLocal(p);
+              onPracticeParChange(p);
+            }}
             style={{
               padding: "8px 10px",
               borderRadius: 10,
@@ -345,7 +374,7 @@ const [view, setView] = useState<"global" | "local">("local");
       );
     }
 
-    const practiceRows = global.practiceByPar[String(practicePar)] ?? [];
+    const practiceRows = global.practiceByPar[String(practiceParLocal)] ?? [];
 
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -377,7 +406,10 @@ const [view, setView] = useState<"global" | "local">("local");
                   </tr>
                 ) : (
                   global.daily.map((r, i) => (
-                    <tr key={`${r.created_at}-${i}`} style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                    <tr
+                      key={`${r.created_at}-${i}`}
+                      style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}
+                    >
                       <td style={{ padding: "8px 6px" }}>{i + 1}</td>
                       <td style={{ padding: "8px 6px" }}>{r.nickname ?? "anon"}</td>
                       <td style={{ padding: "8px 6px" }}>{r.efficiency_score}</td>
@@ -397,15 +429,21 @@ const [view, setView] = useState<"global" | "local">("local");
 
         <div style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-            <div style={{ fontSize: 16, letterSpacing: 0.2 }}>Global — Practice (PAR {practicePar})</div>
+            <div style={{ fontSize: 16, letterSpacing: 0.2 }}>
+              Global — Practice (PAR {practiceParLocal})
+            </div>
             <div style={{ opacity: 0.7, fontSize: 12 }}>Top {LEADERBOARD_SIZE}</div>
           </div>
 
           <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ fontSize: 12, opacity: 0.7 }}>Filter PAR</div>
             <select
-              value={practicePar}
-              onChange={(e) => setPracticePar(Number(e.target.value))}
+              value={practiceParLocal}
+              onChange={(e) => {
+                const p = Number(e.target.value);
+                setPracticeParLocal(p);
+                onPracticeParChange(p);
+              }}
               style={{
                 padding: "8px 10px",
                 borderRadius: 10,
@@ -444,7 +482,10 @@ const [view, setView] = useState<"global" | "local">("local");
                   </tr>
                 ) : (
                   practiceRows.map((r, i) => (
-                    <tr key={`${r.created_at}-${i}`} style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                    <tr
+                      key={`${r.created_at}-${i}`}
+                      style={{ borderTop: "1px solid rgba(255,255,255,.08)" }}
+                    >
                       <td style={{ padding: "8px 6px" }}>{i + 1}</td>
                       <td style={{ padding: "8px 6px" }}>{r.nickname ?? "anon"}</td>
                       <td style={{ padding: "8px 6px" }}>{r.efficiency_score}</td>

@@ -1324,8 +1324,10 @@ useEffect(() => {
 
 {/* LEADERBOARDS (always mounted so Practice saves too; UI hidden in practice) */}
 <Leaderboards
-  visible={true}
+  visible={!isPractice}
   lastSolvedRun={lastSolvedRun}
+  practicePar={practicePar}
+  onPracticeParChange={setPracticePar}
 />
 
         {/* FOOTER BUILD INFO */}
