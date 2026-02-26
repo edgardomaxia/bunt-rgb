@@ -1458,18 +1458,58 @@ setDailyLoadStatus("ready");
 
               <div style={{ marginTop: 10 }}>
                 <input
-                  className="parSlider"
-                  type="range"
-                  min={1}
-                  max={20}
-                  step={1}
-                  value={practicePar}
-                  onChange={(e) => setPracticePar(Number(e.target.value))}
-                  aria-label="Practice difficulty (PAR)"
-                  style={{
-                    ["--track" as any]: `hsl(${Math.round(120 - ((practicePar - 1) / 19) * 120)} 100% 45%)`,
-                  }}
-                />
+  className="parSlider"
+  type="range"
+  min={1}
+  max={20}
+  step={1}
+  value={practicePar}
+  onChange={(e) => setPracticePar(Number(e.target.value))}
+  aria-label="Practice difficulty (PAR)"
+style={{
+  ["--track" as any]: (() => {
+    const p = practicePar;
+
+    // 1 = dark green (super easy)
+    if (p === 1) return "hsl(140 100% 25%)";
+
+    // 2–5: green → lime
+    if (p <= 5) {
+      const t = (p - 2) / 3;
+      const hue = 130 - 20 * t;      // 130 → 110
+      const light = 35 + 10 * t;     // 35 → 45
+      return `hsl(${hue} 100% ${light}%)`;
+    }
+
+    // 6–10: lime → yellow
+    if (p <= 10) {
+      const t = (p - 6) / 4;
+      const hue = 110 - 50 * t;      // 110 → 60
+      const light = 45 + 5 * t;      // 45 → 50
+      return `hsl(${hue} 100% ${light}%)`;
+    }
+
+    // 11–15: yellow → orange
+    if (p <= 15) {
+      const t = (p - 11) / 4;
+      const hue = 60 - 30 * t;       // 60 → 30
+      return `hsl(${hue} 100% 50%)`;
+    }
+
+    // 16–18: orange → red
+    if (p <= 18) {
+      const t = (p - 16) / 2;
+      const hue = 30 - 30 * t;       // 30 → 0
+      return `hsl(${hue} 100% 48%)`;
+    }
+
+    // 19–20: red → dark red
+    const t = (p - 19) / 1;
+    const light = 48 - 25 * t;       // 48 → 23
+    return `hsl(0 100% ${light}%)`;
+  })(),
+}}
+/>
 
                 <div
                   style={{
