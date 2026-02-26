@@ -288,23 +288,7 @@ const [dailyLoadStatus, setDailyLoadStatus] = useState<"idle" | "loading" | "rea
     color: "#fff",
     cursor: "pointer",
   };
-  const sideSmallBtnStyle: React.CSSProperties = {
-    position: "absolute",
-    left: -95,
-    width: 70,
-    height: 40,
-    borderRadius: 9,
-    border: "1px solid rgba(255,255,255,.35)",
-    background: "rgba(0,0,0,.55)",
-    color: "#fff",
-    fontSize: 8,
-    fontWeight: 700,
-    lineHeight: "12px",
-    padding: 0,
-    cursor: "pointer",
-    textAlign: "center",
-    zIndex: Z.sideButtons,
-  };
+
   const topLinkStyle: React.CSSProperties = {
     background: "rgba(255,255,255,.08)",
     border: "1px solid rgba(255,255,255,.15)",
@@ -530,28 +514,34 @@ useEffect(() => {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        setIsVersionOpen(false);
-        setIsFeedbackOpen(false);
-        setIsShareOpen(false);
-        setIsHelpOpen(false);
-        setIsGlobalOptOpen(false);
-                setIsDonateOpen(false);
-        
-      }
+  setIsVersionOpen(false);
+  setIsFeedbackOpen(false);
+  setIsShareOpen(false);
+  setIsHelpOpen(false);
+  setIsPastOpen(false);
+  setIsGlobalOptOpen(false);
+  setIsDonateOpen(false);
+}
     }
 
     window.addEventListener("keydown", onKeyDown);
+        const prevOverflow = document.body.style.overflow;
 
-    const anyModalOpen =
-      isVersionOpen || isFeedbackOpen || isShareOpen || isHelpOpen || isGlobalOptOpen || isDonateOpen;    const prevOverflow = document.body.style.overflow;
-    if (anyModalOpen) document.body.style.overflow = "hidden";
+   const anyModalOpen =
+  isVersionOpen ||
+  isFeedbackOpen ||
+  isShareOpen ||
+  isHelpOpen ||
+  isPastOpen ||
+  isGlobalOptOpen ||
+  isDonateOpen;
+   if (anyModalOpen) document.body.style.overflow = "hidden";
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = prevOverflow;
     };
-  }, [isVersionOpen, isFeedbackOpen, isShareOpen, isHelpOpen, isGlobalOptOpen]);
-
+}, [isVersionOpen, isFeedbackOpen, isShareOpen, isHelpOpen, isPastOpen, isGlobalOptOpen, isDonateOpen]);
 async function loadDaily() {
   setDailyLoadStatus("loading");
 
@@ -733,7 +723,7 @@ setDailyLoadStatus("ready");
             letterSpacing: 2,
             fontSize: 12,
             fontWeight: 800,
-            zIndex: 40,
+            zIndex: Z.practiceBar,
             userSelect: "none",
           }}
         >
@@ -1301,10 +1291,11 @@ setDailyLoadStatus("ready");
 
           <div style={{ opacity: 0.85, marginTop: 0, fontSize: 18 }}>Make all tiles the same color</div>
 
+          {/* STATS (moved below grid) */}
           <div
             style={{
               opacity: 0.9,
-              marginTop: 14,
+              marginTop: 10,
               display: "flex",
               gap: 18,
               justifyContent: "center",
@@ -1331,14 +1322,26 @@ setDailyLoadStatus("ready");
               <div style={{ fontSize: 20 }}>{efficiencyScore}</div>
             </div>
           </div>
+                    {/* BETWEEN GRID AND STATS (normal mode) */}
+          {!isPractice ? (
+            <div style={{ marginTop: 10, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={() => setIsHelpOpen(true)} style={{ ...btnStyle, padding: "8px 12px", fontSize: 12 }}>
+                HINTS
+              </button>
 
-          <div style={{ marginTop: 10, opacity: 0.9 }}>{isSolved ? "✅ Solved" : ""}</div>
-        </div>
-
+              <button
+                onClick={() => setIsPastOpen(true)}
+                style={{ ...btnStyle, padding: "8px 12px", fontSize: 12 }}
+              >
+                PAST DAILY
+              </button>
+            </div>
+          ) : null}
 <div
   style={{
     position: "relative",
     display: "inline-block",
+    marginTop: 16,
   }}
 >
   {!isPractice && dailyLoadStatus === "loading" && (
@@ -1359,32 +1362,7 @@ setDailyLoadStatus("ready");
     </div>
   </div>
 )}
-          {/* HELP BUTTON (outside, left) */}
-         <button
-  onClick={() => setIsHelpOpen(true)}
-  aria-label="Hints"
-  title="Hints"
-  style={{ ...sideSmallBtnStyle, top: 6 }}
->
-  <span style={{ display: "block", lineHeight: 1.05 }}>
-    HINTS
-  </span>
-</button>
 
-<button
-    onClick={() => {
-    setIsPastOpen(true);
-  }}
-  aria-label="Past scrambles"
-  title="Past scrambles"
-  style={{ ...sideSmallBtnStyle, top: 56 }}
->
-  <span style={{ display: "block", lineHeight: 1.05 }}>
-    PAST
-    <br />
-    SCRAMBLES
-  </span>
-</button>
 
           {/* GRID */}
           <div
@@ -1422,6 +1400,11 @@ setDailyLoadStatus("ready");
               />
             ))}
           </div>
+
+
+
+
+          <div style={{ marginTop: 10, opacity: 0.9 }}>{isSolved ? "✅ Solved" : ""}</div>
         {!isPractice ? (
             <div
               style={{
@@ -1436,8 +1419,10 @@ setDailyLoadStatus("ready");
               DAILY SCRAMBLE #{String(dailyNum).padStart(4, "0")} • NEXT IN {nextDailyIn}
             </div>
           ) : null}
-        </div>
 
+          
+        </div>
+</div>
 
 
         {/* BUTTONS */}
@@ -1647,7 +1632,11 @@ style={{
           </div>
         )}
 
-
+        {!isPractice ? (
+          <div style={{ marginTop: 16, textAlign: "center", fontSize: 12, letterSpacing: 2, opacity: 0.75 }}>
+            GLOBAL LEADERBOARD COMING SOON
+          </div>
+        ) : null}
 
         {/* FOOTER BUILD INFO */}
         <div
