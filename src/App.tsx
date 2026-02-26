@@ -1677,7 +1677,9 @@ class ErrorBoundary extends React.Component<
         <div
           style={{
             minHeight: "100vh",
-            width: "100vw",
+            width: "100%",
+overflowX: "hidden",
+display: "flex",
             background: "#000",
             color: "#fff",
             fontFamily: "system-ui",
