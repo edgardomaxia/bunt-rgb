@@ -207,31 +207,71 @@ function AppInner() {
   const [pastLoadStatus, setPastLoadStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
   async function loadPastScrambles(limit = 24) {
-    setPastLoadStatus("loading");
-    try {
-      const res = await fetch(`/api/past-scrambles?limit=${encodeURIComponent(String(limit))}`, {
-        cache: "no-store",
-      });
-      const data = await res.json();
-      if (!data?.ok) throw new Error(data?.error ?? "past api not ok");
+  setPastLoadStatus("loading");
 
-      const items = (data.items as any[] | undefined) ?? [];
-      const cleaned: PastScrambleItem[] = items
-        .map((it) => ({
-          dailyId: String(it.dailyId ?? ""),
-          number: Number(it.number ?? 0),
-          par: Number(it.par ?? 0),
-          grid: Array.isArray(it.grid) ? (it.grid as Color[]) : [],
-        }))
-        .filter((it) => it.dailyId && it.number > 0 && it.grid.length === SIZE * SIZE);
+  const started = performance.now();
+  const url = `/api/past-scrambles?limit=${encodeURIComponent(String(limit))}`;
 
-      setPastScrambles(cleaned);
-      setPastLoadStatus("ready");
-    } catch (e) {
-      console.error("[past] failed to load /api/past-scrambles", e);
-      setPastLoadStatus("error");
+  // client-side timeout (fetch non ha timeout di default)
+  const ctrl = new AbortController();
+  const timeoutMs = 8000;
+  const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: ctrl.signal,
+      headers: { Accept: "application/json" },
+    });
+
+    const ms = Math.round(performance.now() - started);
+
+    // Se non è 2xx, leggi il body in chiaro
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} after ${ms}ms — ${text.slice(0, 300)}`);
     }
+
+    // JSON robusto: se torna HTML o roba strana lo vedi
+    const rawText = await res.text();
+    let data: any;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      throw new Error(`Invalid JSON after ${ms}ms — ${rawText.slice(0, 300)}`);
+    }
+
+    if (!data?.ok) {
+      throw new Error(`API not ok after ${ms}ms — ${String(data?.error ?? "unknown error")}`);
+    }
+
+    const items = (data.items as any[] | undefined) ?? [];
+    const cleaned: PastScrambleItem[] = items
+      .map((it) => ({
+        dailyId: String(it.dailyId ?? ""),
+        number: Number(it.number ?? 0),
+        par: Number(it.par ?? 0),
+        grid: Array.isArray(it.grid) ? (it.grid as Color[]) : [],
+      }))
+      .filter((it) => it.dailyId && it.number > 0 && it.grid.length === SIZE * SIZE);
+
+    setPastScrambles(cleaned);
+    setPastLoadStatus("ready");
+
+    console.log(`[past] ok (${cleaned.length}) in ${ms}ms`);
+  } catch (e: any) {
+    const ms = Math.round(performance.now() - started);
+    const msg =
+      e?.name === "AbortError"
+        ? `Timeout after ${timeoutMs}ms`
+        : `Failed after ${ms}ms — ${String(e?.message ?? e)}`;
+
+    console.error("[past] load failed:", msg, e);
+    setPastLoadStatus("error");
+  } finally {
+    window.clearTimeout(t);
   }
+}
 
   const bootstrap = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -1110,7 +1150,7 @@ setDailyLoadStatus("ready");
       justifyContent: "center",
       alignItems: "center",
       padding: 16,
-      zIndex: 1000,
+      zIndex: Z.modalOverlay
     }}
   >
     <div
