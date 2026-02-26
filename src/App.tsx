@@ -201,77 +201,9 @@ function AppInner() {
     return loadRunState();
   }, []);
 
-  type PastScrambleItem = { dailyId: string; number: number; par: number; grid: Color[] };
 
-  const [pastScrambles, setPastScrambles] = useState<PastScrambleItem[]>([]);
-  const [pastLoadStatus, setPastLoadStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
-  async function loadPastScrambles(limit = 24) {
-  setPastLoadStatus("loading");
 
-  const started = performance.now();
-  const url = `/api/past-scrambles?limit=${encodeURIComponent(String(limit))}`;
-
-  // client-side timeout (fetch non ha timeout di default)
-  const ctrl = new AbortController();
-  const timeoutMs = 8000;
-  const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, {
-      cache: "no-store",
-      signal: ctrl.signal,
-      headers: { Accept: "application/json" },
-    });
-
-    const ms = Math.round(performance.now() - started);
-
-    // Se non è 2xx, leggi il body in chiaro
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status} after ${ms}ms — ${text.slice(0, 300)}`);
-    }
-
-    // JSON robusto: se torna HTML o roba strana lo vedi
-    const rawText = await res.text();
-    let data: any;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      throw new Error(`Invalid JSON after ${ms}ms — ${rawText.slice(0, 300)}`);
-    }
-
-    if (!data?.ok) {
-      throw new Error(`API not ok after ${ms}ms — ${String(data?.error ?? "unknown error")}`);
-    }
-
-    const items = (data.items as any[] | undefined) ?? [];
-    const cleaned: PastScrambleItem[] = items
-      .map((it) => ({
-        dailyId: String(it.dailyId ?? ""),
-        number: Number(it.number ?? 0),
-        par: Number(it.par ?? 0),
-        grid: Array.isArray(it.grid) ? (it.grid as Color[]) : [],
-      }))
-      .filter((it) => it.dailyId && it.number > 0 && it.grid.length === SIZE * SIZE);
-
-    setPastScrambles(cleaned);
-    setPastLoadStatus("ready");
-
-    console.log(`[past] ok (${cleaned.length}) in ${ms}ms`);
-  } catch (e: any) {
-    const ms = Math.round(performance.now() - started);
-    const msg =
-      e?.name === "AbortError"
-        ? `Timeout after ${timeoutMs}ms`
-        : `Failed after ${ms}ms — ${String(e?.message ?? e)}`;
-
-    console.error("[past] load failed:", msg, e);
-    setPastLoadStatus("error");
-  } finally {
-    window.clearTimeout(t);
-  }
-}
 
   const bootstrap = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -1150,13 +1082,13 @@ setDailyLoadStatus("ready");
       justifyContent: "center",
       alignItems: "center",
       padding: 16,
-      zIndex: Z.modalOverlay
+      zIndex: Z.modalOverlay,
     }}
   >
     <div
       onClick={(e) => e.stopPropagation()}
       style={{
-        width: "min(880px, 95vw)",
+        width: "min(560px, 92vw)",
         maxHeight: "85vh",
         overflowY: "auto",
         borderRadius: 16,
@@ -1167,82 +1099,24 @@ setDailyLoadStatus("ready");
         position: "relative",
       }}
     >
-      <button
-        onClick={() => setIsPastOpen(false)}
-        style={modalCloseStyle}
-        aria-label="Close"
-      >
+      <button onClick={() => setIsPastOpen(false)} style={modalCloseStyle} aria-label="Close">
         ×
       </button>
 
-      <div style={{ fontSize: 18, marginBottom: 10 }}>
-  Past Daily Scrambles
-</div>
-
-{pastLoadStatus === "loading" ? (
-  <div style={{ opacity: 0.8, fontSize: 13, marginBottom: 12 }}>Loading…</div>
-) : null}
-
-{pastLoadStatus === "error" ? (
-  <div style={{ opacity: 0.8, fontSize: 13, marginBottom: 12 }}>
-    Couldn’t load past scrambles.
-    <button onClick={() => void loadPastScrambles(24)} style={{ ...btnStyle, marginLeft: 10 }}>
-      Retry
-    </button>
-  </div>
-) : null}
+      <div style={{ fontSize: 18, marginBottom: 10 }}>Past Daily Scrambles</div>
 
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 18,
+          opacity: 0.85,
+          fontSize: 13,
+          lineHeight: 1.5,
+          border: "1px solid rgba(255,255,255,.12)",
+          borderRadius: 12,
+          background: "rgba(255,255,255,.04)",
+          padding: 12,
         }}
       >
-        {pastScrambles.map((item, i) => (
-          <div
-            key={i}
-            style={{
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,.12)",
-              padding: 10,
-              background: "rgba(255,255,255,.04)",
-            }}
-          >
-            {/* MATRIX PREVIEW */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${SIZE}, 10px)`,
-                gap: 2,
-                justifyContent: "center",
-                marginBottom: 8,
-              }}
-            >
-              {item.grid.map((c, j) => (
-  <div
-    key={j}
-    style={{
-      width: 10,
-      height: 10,
-      borderRadius: 2,
-      background: TILE_COLORS[c],
-    }}
-  />
-))}
-            </div>
-
-            <div
-              style={{
-                fontSize: 11,
-                textAlign: "center",
-                opacity: 0.75,
-                letterSpacing: 1,
-              }}
-            >
-DAILY SCRAMBLE #{String(item.number).padStart(4, "0")}            </div>
-          </div>
-        ))}
+        COMING SOON.
       </div>
     </div>
   </div>
@@ -1500,7 +1374,6 @@ DAILY SCRAMBLE #{String(item.number).padStart(4, "0")}            </div>
 <button
     onClick={() => {
     setIsPastOpen(true);
-    if (pastLoadStatus === "idle") void loadPastScrambles(24);
   }}
   aria-label="Past scrambles"
   title="Past scrambles"
