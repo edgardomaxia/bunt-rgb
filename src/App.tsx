@@ -694,8 +694,7 @@ setDailyLoadStatus("ready");
       style={{
         position: "relative",
         minHeight: "100vh",
-       width: "100%",
-overflowX: "hidden",
+        width: "100vw",
         display: "flex",
         justifyContent: isPractice ? "flex-start" : "center",
         alignItems: isPractice ? "flex-start" : "center",
@@ -1338,99 +1337,91 @@ overflowX: "hidden",
               </button>
             </div>
           ) : null}
-{/* GRID WRAPPER (always centered) */}
 <div
   style={{
-    width: "100%",
-    display: "flex",
-    justifyContent: "center",
+    position: "relative",
+    display: "inline-block",
     marginTop: 16,
   }}
 >
+  {!isPractice && dailyLoadStatus === "loading" && (
   <div
     style={{
-      position: "relative",
-      display: "block",
+      position: "absolute",
+      inset: 0,
+      background: "rgba(0,0,0,.85)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 8,
+      zIndex: 300,
     }}
   >
-    {!isPractice && dailyLoadStatus === "loading" && (
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "rgba(0,0,0,.85)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          borderRadius: 8,
-          zIndex: 300,
-        }}
-      >
-        <div style={{ fontSize: 13, letterSpacing: 1, opacity: 0.85 }}>Loading…</div>
-      </div>
-    )}
-
-    {/* GRID */}
-    <div
-      style={
-        {
-          "--tile": "clamp(44px, 12vw, 60px)",
-          "--gap": "clamp(4px, 1.6vw, 6px)",
-          display: "grid",
-          gridTemplateColumns: `repeat(${SIZE}, var(--tile))`,
-          gap: "var(--gap)",
-          filter: "none",
-        } as React.CSSProperties
-      }
-    >
-      {grid.map((color, index) => (
-        <button
-          key={index}
-          onClick={() => {
-            if (isSolved) return;
-            startTimerIfNeeded();
-            setGrid((prev) => applyMove(prev, index));
-            setClicks((c) => c + 1);
-          }}
-          style={{
-            width: "var(--tile)",
-            height: "var(--tile)",
-            background: TILE_COLORS[color],
-            borderRadius: 8,
-            border: "none",
-            padding: 0,
-            cursor: isSolved ? "default" : "pointer",
-            outline: "1px solid rgba(255,255,255,.08)",
-          }}
-          aria-label={`cell-${index}`}
-        />
-      ))}
+    <div style={{ fontSize: 13, letterSpacing: 1, opacity: 0.85 }}>
+      Loading…
     </div>
-
-    <div style={{ marginTop: 10, opacity: 0.9 }}>{isSolved ? "✅ Solved" : ""}</div>
-
-    {!isPractice ? (
-      <div
-        style={{
-          marginTop: 10,
-          textAlign: "center",
-          opacity: 0.7,
-          fontSize: 11,
-          letterSpacing: 2,
-          userSelect: "none",
-        }}
-      >
-        DAILY SCRAMBLE #{String(dailyNum).padStart(4, "0")} • NEXT IN {nextDailyIn}
-      </div>
-    ) : null}
   </div>
-</div>
+)}
+
+
+          {/* GRID */}
+          <div
+  style={
+    {
+      "--tile": "56px",
+      "--gap": "6px",
+      display: "grid",
+      gridTemplateColumns: `repeat(${SIZE}, var(--tile))`,
+      gap: "var(--gap)",
+      filter: "none",
+    } as React.CSSProperties
+  }
+>
+            {grid.map((color, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  if (isSolved) return;
+                  startTimerIfNeeded();
+                  setGrid((prev) => applyMove(prev, index));
+                  setClicks((c) => c + 1);
+                }}
+                style={{
+                  width: "var(--tile)",
+                  height: "var(--tile)",
+                  background: TILE_COLORS[color],
+                  borderRadius: 8,
+                  border: "none",
+                  padding: 0,
+                  cursor: isSolved ? "default" : "pointer",
+                  outline: "1px solid rgba(255,255,255,.08)",
+                }}
+                aria-label={`cell-${index}`}
+              />
+            ))}
+          </div>
 
 
 
 
+          <div style={{ marginTop: 10, opacity: 0.9 }}>{isSolved ? "✅ Solved" : ""}</div>
+        {!isPractice ? (
+            <div
+              style={{
+                marginTop: 10,
+                textAlign: "center",
+                opacity: 0.7,
+                fontSize: 11,
+                letterSpacing: 2,
+                userSelect: "none",
+              }}
+            >
+              DAILY SCRAMBLE #{String(dailyNum).padStart(4, "0")} • NEXT IN {nextDailyIn}
+            </div>
+          ) : null}
 
-
+          
+        </div>
 </div>
 
 
@@ -1689,6 +1680,7 @@ class ErrorBoundary extends React.Component<
             width: "100%",
 overflowX: "hidden",
 display: "flex",
+
             background: "#000",
             color: "#fff",
             fontFamily: "system-ui",
