@@ -130,10 +130,14 @@ export default function Leaderboards(props: {
     setView(lockView);
   }, [lockView]);
 
-  // 1) SAVE LOCAL on solved run (Daily + Practice-by-PAR)
-  useEffect(() => {
-    if (!lastSolvedRun) return;
-    if (typeof window === "undefined") return;
+ // 1) SAVE LOCAL on solved run (Daily + Practice-by-PAR)
+useEffect(() => {
+  if (!lastSolvedRun) return;
+  if (typeof window === "undefined") return;
+
+  // Guard: evita salvataggi “fantasma” (es. grid già solved al boot / restore)
+  if (lastSolvedRun.clicks <= 0) return;
+  if (lastSolvedRun.timeMs <= 0) return;
 
     // If just solved a practice run, auto-select that PAR everywhere
     if (lastSolvedRun.kind === "practice") {

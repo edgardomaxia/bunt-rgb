@@ -155,7 +155,14 @@ const TILE_COLORS: Record<Color, string> = {
   green: "#00d500",
   blue: "#0033ff",
 };
-
+  // Z-INDEX SCALE (single source of truth)
+  const Z = {
+    base: 0,
+    practiceBar: 40,
+    sideButtons: 45,  // MUST be below any modal
+    modalOverlay: 200,
+    modalContent: 210,
+  } as const;
 function formatOnlineIso(iso: string) {
   const fmt = (d: Date) => {
     const date = d.toLocaleDateString("it-IT", {
@@ -194,6 +201,38 @@ function AppInner() {
     return loadRunState();
   }, []);
 
+  type PastScrambleItem = { dailyId: string; number: number; par: number; grid: Color[] };
+
+  const [pastScrambles, setPastScrambles] = useState<PastScrambleItem[]>([]);
+  const [pastLoadStatus, setPastLoadStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+
+  async function loadPastScrambles(limit = 24) {
+    setPastLoadStatus("loading");
+    try {
+      const res = await fetch(`/api/past-scrambles?limit=${encodeURIComponent(String(limit))}`, {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!data?.ok) throw new Error(data?.error ?? "past api not ok");
+
+      const items = (data.items as any[] | undefined) ?? [];
+      const cleaned: PastScrambleItem[] = items
+        .map((it) => ({
+          dailyId: String(it.dailyId ?? ""),
+          number: Number(it.number ?? 0),
+          par: Number(it.par ?? 0),
+          grid: Array.isArray(it.grid) ? (it.grid as Color[]) : [],
+        }))
+        .filter((it) => it.dailyId && it.number > 0 && it.grid.length === SIZE * SIZE);
+
+      setPastScrambles(cleaned);
+      setPastLoadStatus("ready");
+    } catch (e) {
+      console.error("[past] failed to load /api/past-scrambles", e);
+      setPastLoadStatus("error");
+    }
+  }
+
   const bootstrap = useMemo(() => {
     if (typeof window === "undefined") return null;
     if (initialRun) return null;
@@ -209,12 +248,15 @@ function AppInner() {
   const [nextDailyIn, setNextDailyIn] = useState<string>(() =>
     formatCountdown(nextDailyUtcMs(new Date()) - Date.now())
   );
-
+const [dailyLoadStatus, setDailyLoadStatus] = useState<"idle" | "loading" | "ready" | "error">(
+  "idle"
+);
   const [isVersionOpen, setIsVersionOpen] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-
+  const [isPastOpen, setIsPastOpen] = useState(false);
+  const [isDonateOpen, setIsDonateOpen] = useState(false);
   const [isGlobalOptOpen, setIsGlobalOptOpen] = useState(false);
   const [globalOpt, setGlobalOpt] = useState<"yes" | "no" | null>(() =>
     typeof window === "undefined" ? null : loadGlobalOpt()
@@ -274,7 +316,23 @@ function AppInner() {
     color: "#fff",
     cursor: "pointer",
   };
-
+  const sideSmallBtnStyle: React.CSSProperties = {
+    position: "absolute",
+    left: -95,
+    width: 70,
+    height: 40,
+    borderRadius: 9,
+    border: "1px solid rgba(255,255,255,.35)",
+    background: "rgba(0,0,0,.55)",
+    color: "#fff",
+    fontSize: 8,
+    fontWeight: 700,
+    lineHeight: "12px",
+    padding: 0,
+    cursor: "pointer",
+    textAlign: "center",
+    zIndex: Z.sideButtons,
+  };
   const topLinkStyle: React.CSSProperties = {
     background: "rgba(255,255,255,.08)",
     border: "1px solid rgba(255,255,255,.15)",
@@ -293,7 +351,51 @@ function AppInner() {
     height: 44,
     boxSizing: "border-box",
   };
+  // TOP BUTTONS — single source of truth (texts, spacing, sizes)
+  const TOP_BTNS = {
+    gap: 8,      // spacing between buttons
+    w: 77,       // button width
+    h: 44,       // button height
+    fontSize: 10 // label font size
+  } as const;
 
+  type TopAction =
+    | { kind: "link"; labelLines: [string, string?]; href: string; title: string }
+    | { kind: "modal"; labelLines: [string, string?]; title: string; onClick: () => void };
+
+  const TOP_ACTIONS: TopAction[] = [
+    {
+      kind: "link",
+      labelLines: ["Official", "Website"],
+      href: "https://bunt-rgb.com/",
+      title: "Official website",
+    },
+    {
+      kind: "link",
+      labelLines: ["Follow my", "Devlog"],
+      href: "https://www.youtube.com/@BuntRGB",
+      title: "Follow my devlog journey",
+    },
+    {
+      kind: "modal",
+      labelLines: ["Send", "Feedback"],
+      title: "Send anonymous feedback",
+      onClick: () => setIsFeedbackOpen(true),
+    },
+    {
+      kind: "modal",
+      labelLines: ["Donate"],
+      title: "Donate (crypto)",
+      onClick: () => setIsDonateOpen(true),
+    },
+  ];
+
+  const topBtnStyle: React.CSSProperties = {
+    ...topLinkStyle,
+    width: TOP_BTNS.w,
+    height: TOP_BTNS.h,
+    fontSize: TOP_BTNS.fontSize,
+  };
   const practiceBtnStyle: React.CSSProperties = {
     padding: "10px 18px",
     borderRadius: 12,
@@ -461,13 +563,15 @@ useEffect(() => {
         setIsShareOpen(false);
         setIsHelpOpen(false);
         setIsGlobalOptOpen(false);
+                setIsDonateOpen(false);
+        
       }
     }
 
     window.addEventListener("keydown", onKeyDown);
 
-    const anyModalOpen = isVersionOpen || isFeedbackOpen || isShareOpen || isHelpOpen || isGlobalOptOpen;
-    const prevOverflow = document.body.style.overflow;
+    const anyModalOpen =
+      isVersionOpen || isFeedbackOpen || isShareOpen || isHelpOpen || isGlobalOptOpen || isDonateOpen;    const prevOverflow = document.body.style.overflow;
     if (anyModalOpen) document.body.style.overflow = "hidden";
 
     return () => {
@@ -476,12 +580,14 @@ useEffect(() => {
     };
   }, [isVersionOpen, isFeedbackOpen, isShareOpen, isHelpOpen, isGlobalOptOpen]);
 
-  async function loadDaily() {
-    const todayId = utcDailyId();
-    const cached = loadDailyState();
+async function loadDaily() {
+  setDailyLoadStatus("loading");
 
-    try {
-      const res = await fetch("/api/daily", { cache: "no-store" });
+  const todayId = utcDailyId();
+  const cached = loadDailyState();
+
+  try {
+    const res = await fetch("/api/daily", { cache: "no-store" });
       const data = await res.json();
 
       if (!data?.ok) throw new Error("daily api not ok");
@@ -531,8 +637,11 @@ useEffect(() => {
       startTimeRef.current = null;
       savedThisRunRef.current = false;
 
+setDailyLoadStatus("ready");
+
       return;
     } catch (e) {
+        setDailyLoadStatus("error");
       if (cached && cached.dailyId === todayId) {
         setMode("normal");
         setPuzzleKind("daily");
@@ -635,7 +744,8 @@ useEffect(() => {
         boxSizing: "border-box",
       }}
     >
-      {isPractice ? (
+
+{isPractice ? (
         <div
           style={{
             position: "fixed",
@@ -671,7 +781,7 @@ useEffect(() => {
             justifyContent: "center",
             alignItems: "center",
             padding: 16,
-            zIndex: 50,
+            zIndex: Z.modalOverlay,
           }}
         >
           <div
@@ -867,6 +977,87 @@ useEffect(() => {
         </div>
       ) : null}
 
+      {/* DONATE MODAL */}
+      {isDonateOpen ? (
+        <div
+          onClick={() => setIsDonateOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.6)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 16,
+            zIndex: 62,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, 92vw)",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.14)",
+              background: "rgba(15,15,15,.96)",
+              boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+              padding: 16,
+              position: "relative",
+            }}
+          >
+            <button onClick={() => setIsDonateOpen(false)} style={modalCloseStyle} aria-label="Close">
+              ×
+            </button>
+
+            <div style={{ fontSize: 18, letterSpacing: 0.2 }}>Donate</div>
+            <div style={{ opacity: 0.75, fontSize: 13, marginTop: 10 }}>
+              Thanks for supporting BUNT RGB.
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,.12)",
+                background: "rgba(255,255,255,.04)",
+                padding: 12,
+                fontSize: 13,
+                lineHeight: 1.45,
+              }}
+            >
+              <div style={{ opacity: 0.75, fontSize: 12, marginBottom: 6 }}>BTC Address</div>
+              <div style={{ wordBreak: "break-all" }}>
+                bc1qjhxpqea96s52m7e7gsn82krvekvvc9cez4kkgs
+              </div>
+
+              <div style={{ height: 12 }} />
+
+              <div style={{ opacity: 0.75, fontSize: 12, marginBottom: 6 }}>ETH Address</div>
+              <div style={{ wordBreak: "break-all" }}>
+                0xe8a2d539C53547D0f39f258Dc1a44bec6b997aa1
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 14, justifyContent: "flex-end", flexWrap: "wrap" }}>
+              <button
+                onClick={() => {
+                  const txt =
+                    "BTC Address\nbc1qjhxpqea96s52m7e7gsn82krvekvvc9cez4kkgs\n\nETH Address\n0xe8a2d539C53547D0f39f258Dc1a44bec6b997aa1";
+                  navigator.clipboard.writeText(txt);
+                  alert("Copied!");
+                }}
+                style={btnStyle}
+              >
+                Copy
+              </button>
+
+              <button onClick={() => setIsDonateOpen(false)} style={{ ...btnStyle, background: "#fff", color: "#000" }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* HELP MODAL */}
       {isHelpOpen ? (
         <div
@@ -906,6 +1097,116 @@ useEffect(() => {
           </div>
         </div>
       ) : null}
+
+{/* PAST SCRAMBLES MODAL */}
+{isPastOpen ? (
+  <div
+    onClick={() => setIsPastOpen(false)}
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,.6)",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 16,
+      zIndex: 1000,
+    }}
+  >
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: "min(880px, 95vw)",
+        maxHeight: "85vh",
+        overflowY: "auto",
+        borderRadius: 16,
+        border: "1px solid rgba(255,255,255,.14)",
+        background: "rgba(15,15,15,.96)",
+        boxShadow: "0 20px 80px rgba(0,0,0,.6)",
+        padding: 20,
+        position: "relative",
+      }}
+    >
+      <button
+        onClick={() => setIsPastOpen(false)}
+        style={modalCloseStyle}
+        aria-label="Close"
+      >
+        ×
+      </button>
+
+      <div style={{ fontSize: 18, marginBottom: 10 }}>
+  Past Daily Scrambles
+</div>
+
+{pastLoadStatus === "loading" ? (
+  <div style={{ opacity: 0.8, fontSize: 13, marginBottom: 12 }}>Loading…</div>
+) : null}
+
+{pastLoadStatus === "error" ? (
+  <div style={{ opacity: 0.8, fontSize: 13, marginBottom: 12 }}>
+    Couldn’t load past scrambles.
+    <button onClick={() => void loadPastScrambles(24)} style={{ ...btnStyle, marginLeft: 10 }}>
+      Retry
+    </button>
+  </div>
+) : null}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 18,
+        }}
+      >
+        {pastScrambles.map((item, i) => (
+          <div
+            key={i}
+            style={{
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,.12)",
+              padding: 10,
+              background: "rgba(255,255,255,.04)",
+            }}
+          >
+            {/* MATRIX PREVIEW */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${SIZE}, 10px)`,
+                gap: 2,
+                justifyContent: "center",
+                marginBottom: 8,
+              }}
+            >
+              {item.grid.map((c, j) => (
+  <div
+    key={j}
+    style={{
+      width: 10,
+      height: 10,
+      borderRadius: 2,
+      background: TILE_COLORS[c],
+    }}
+  />
+))}
+            </div>
+
+            <div
+              style={{
+                fontSize: 11,
+                textAlign: "center",
+                opacity: 0.75,
+                letterSpacing: 1,
+              }}
+            >
+DAILY SCRAMBLE #{String(item.number).padStart(4, "0")}            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+) : null}
 
       {/* GLOBAL SAVE OPT-IN MODAL */}
       {isGlobalOptOpen ? (
@@ -1031,36 +1332,48 @@ useEffect(() => {
               <div style={{ opacity: 0.85 }}>{APP_STATUS}</div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-              <a
-                href="https://bunt-rgb.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={topLinkStyle}
-                title="Official website"
-              >
-                Official
-                <br />
-                Website
-              </a>
+                        <div
+              style={{
+                display: "flex",
+                gap: TOP_BTNS.gap,
+                flexWrap: "wrap",
+                justifyContent: "center",
+              }}
+            >
+              {TOP_ACTIONS.map((a, i) => {
+                const content = (
+                  <>
+                    {a.labelLines[0]}
+                    {a.labelLines[1] ? (
+                      <>
+                        <br />
+                        {a.labelLines[1]}
+                      </>
+                    ) : null}
+                  </>
+                );
 
-              <a
-                href="https://www.youtube.com/@BuntRGB"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={topLinkStyle}
-                title="Follow my devlog journey"
-              >
-                Follow my
-                <br />
-                Devlog
-              </a>
+                if (a.kind === "link") {
+                  return (
+                    <a
+                      key={i}
+                      href={a.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={topBtnStyle}
+                      title={a.title}
+                    >
+                      {content}
+                    </a>
+                  );
+                }
 
-              <button onClick={() => setIsFeedbackOpen(true)} style={topLinkStyle} title="Send anonymous feedback">
-                Send
-                <br />
-                Feedback
-              </button>
+                return (
+                  <button key={i} onClick={a.onClick} style={topBtnStyle} title={a.title}>
+                    {content}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1070,11 +1383,9 @@ useEffect(() => {
             A DAILY PUZZLE GAME
           </div>
 
-          <div style={{ opacity: 0.7, marginTop: -3, fontSize: 11, letterSpacing: 2 }}>
-            DAILY SCRAMBLE #{String(dailyNum).padStart(4, "0")} • NEXT IN {nextDailyIn}
-          </div>
+          
 
-          <div style={{ opacity: 0.85, marginTop: 12, fontSize: 18 }}>Make all tiles the same color</div>
+          <div style={{ opacity: 0.85, marginTop: 0, fontSize: 18 }}>Make all tiles the same color</div>
 
           <div
             style={{
@@ -1110,34 +1421,57 @@ useEffect(() => {
           <div style={{ marginTop: 10, opacity: 0.9 }}>{isSolved ? "✅ Solved" : ""}</div>
         </div>
 
-        <div style={{ position: "relative", display: "inline-block" } as React.CSSProperties}>
+<div
+  style={{
+    position: "relative",
+    display: "inline-block",
+  }}
+>
+  {!isPractice && dailyLoadStatus === "loading" && (
+  <div
+    style={{
+      position: "absolute",
+      inset: 0,
+      background: "rgba(0,0,0,.85)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: 8,
+      zIndex: 300,
+    }}
+  >
+    <div style={{ fontSize: 13, letterSpacing: 1, opacity: 0.85 }}>
+      Loading…
+    </div>
+  </div>
+)}
           {/* HELP BUTTON (outside, left) */}
-          <button
-            onClick={() => setIsHelpOpen(true)}
-            aria-label="Help"
-            title="Help"
-            style={{
-              position: "absolute",
-              top: 6,
-              left: -58,
-              width: 32,
-              height: 32,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,.35)",
-              background: "rgba(0,0,0,.55)",
-              color: "#fff",
-              fontSize: 18,
-              fontWeight: 800,
-              lineHeight: "32px",
-              padding: 0,
-              cursor: "pointer",
-              textAlign: "center",
-              zIndex: 199,
-              display: "block",
-            }}
-          >
-            {"?"}
-          </button>
+         <button
+  onClick={() => setIsHelpOpen(true)}
+  aria-label="Hints"
+  title="Hints"
+  style={{ ...sideSmallBtnStyle, top: 6 }}
+>
+  <span style={{ display: "block", lineHeight: 1.05 }}>
+    HINTS
+  </span>
+</button>
+
+<button
+    onClick={() => {
+    setIsPastOpen(true);
+    if (pastLoadStatus === "idle") void loadPastScrambles(24);
+  }}
+  aria-label="Past scrambles"
+  title="Past scrambles"
+  style={{ ...sideSmallBtnStyle, top: 56 }}
+>
+  <span style={{ display: "block", lineHeight: 1.05 }}>
+    PAST
+    <br />
+    SCRAMBLES
+  </span>
+</button>
 
           {/* GRID */}
           <div
@@ -1175,7 +1509,23 @@ useEffect(() => {
               />
             ))}
           </div>
+        {!isPractice ? (
+            <div
+              style={{
+                marginTop: 10,
+                textAlign: "center",
+                opacity: 0.7,
+                fontSize: 11,
+                letterSpacing: 2,
+                userSelect: "none",
+              }}
+            >
+              DAILY SCRAMBLE #{String(dailyNum).padStart(4, "0")} • NEXT IN {nextDailyIn}
+            </div>
+          ) : null}
         </div>
+
+
 
         {/* BUTTONS */}
         {isPractice ? (
@@ -1270,17 +1620,27 @@ useEffect(() => {
               `}</style>
                     </div>
 
-            {/* LEADERBOARDS (Practice) */}
-            <div style={{ width: "min(560px, 92vw)", marginTop: 6 }}>
-<Leaderboards
-  visible={true}
-  lastSolvedRun={lastSolvedRun}
-  practicePar={practicePar}
-  onPracticeParChange={setPracticePar}
-  defaultView="local"
-  lockView="local"
-/>
-            </div>
+<button
+  onClick={() => {
+    setMode("normal");
+    void loadDaily();
+  }}
+  style={{ ...backBtnStyle, marginTop: 6 }}
+>
+  Back
+</button>
+
+{/* LEADERBOARDS (Practice) */}
+<div style={{ width: "min(560px, 92vw)", marginTop: 10 }}>
+  <Leaderboards
+    visible={true}
+    lastSolvedRun={lastSolvedRun}
+    practicePar={practicePar}
+    onPracticeParChange={setPracticePar}
+    defaultView="local"
+    lockView="local"
+  />
+</div>
 
             <button
               onClick={() => {

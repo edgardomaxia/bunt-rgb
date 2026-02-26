@@ -5,19 +5,26 @@ export type VersionMeta = {
 };
 
 export const VERSION_HISTORY: VersionMeta[] = [
+    {
+    version: "0.7.0",
+    deployedAtIso: "AUTO",
+    notes: [
+      "UI: moved the Daily Scramble label + countdown under the grid (above the main buttons).",
+      "UI: added a consistent z-index scale so modals always stay above side buttons.",
+      "Past Scrambles modal: improved loading/error state message + retry button (local shows error until API is wired).",
+    ],
+  },
   {
     version: "0.6.0",
     deployedAtIso: "AUTO",
     notes: [
-      "Daily is server source-of-truth: fetch /api/daily (no local generation fallback).",
-      "Daily cache merge: if dailyId matches, keep progress grid but align par/initialGrid with API.",
-      "If /api/daily fails: fallback ONLY to cached daily when cached.dailyId === todayId (no invented daily).",
-      "Practice mode: PAR slider + generator for target PAR.",
-      "Leaderboards refactor v2: Local (Daily + Practice by PAR) + Global endpoints wired (may be unavailable in prov).",
-      "Leaderboard UI: Local-first in prov (Global disabled/locked when needed).",
-      "Practice PAR sync: Practice slider updates leaderboard filter, and solved practice auto-selects its PAR.",
-      "Build fixes for Vercel: removed unused imports/vars that broke tsc build (TS6133).",
-      "Dev workflow: restored localhost to match Vercel preview commit to avoid code drift.",
+      "Daily is now the single official puzzle for the day (loaded from the server).",
+      "Daily progress is saved locally and resumes if you refresh the page.",
+      "If the server is unreachable, the game only resumes a previously saved Daily (no fake new Daily).",
+      "Practice mode: PAR slider + generator for the selected difficulty.",
+      "Leaderboards v2: Local (Daily + Practice by PAR) and Global wiring (may be disabled in preview builds).",
+      "Build stability: cleaned up unused code that was breaking the production build.",
+      "Dev workflow: aligned local and Vercel preview to avoid version drift.",
     ],
   },
   {
