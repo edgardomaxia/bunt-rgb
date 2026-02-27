@@ -97,10 +97,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json(rowToResponse(fresh));
   } catch (e: any) {
-    return res.status(500).json({
-      ok: false,
-      error: "server_error",
-      detail: String(e?.message ?? e),
-    });
-  }
+  const detail = {
+    message: String(e?.message ?? e),
+    name: e?.name ?? null,
+    stack: e?.stack ? String(e.stack).split("\n").slice(0, 12) : null,
+    code: e?.code ?? null,
+  };
+  return res.status(500).json({
+    ok: false,
+    error: "server_error",
+    detail,
+  });
+}
 }
