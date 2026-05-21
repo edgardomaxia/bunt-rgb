@@ -5,7 +5,23 @@ export type VersionMeta = {
 };
 
 export const VERSION_HISTORY: VersionMeta[] = [
-    {
+  {
+    version: "0.8.0",
+    deployedAtIso: "AUTO",
+    notes: [
+      "New UI: bottom navigation with 5 sections (Profile, Leaderboard, Daily, Practice, Settings).",
+      "Composite Bunt R G B logo as SVG, adapts to light/dark theme.",
+      "HINT and PAST SCRAMBLES moved to sidebar icon buttons next to the grid.",
+      "Stats row redesigned: PAR / TIME / MOVES / SCORE inline.",
+      "Practice mode: EASY / MEDIUM / HARD difficulty pills (PAR 3 / 8 / 15) + Custom Complexity placeholder.",
+      "Dark mode: auto-detect (prefers-color-scheme) + manual toggle (sun/moon) + 3-state pref in Settings (light / dark / system), persisted in localStorage.",
+      "Refactor: App.tsx 1726 → 469 lines. Logic split into lib/, hooks/, components/{icons,layout,modals,game}/, screens/, styles/.",
+      "CSS variables drive the full theme (bg, fg, border, modal surface) — no more hardcoded #fff / #000.",
+      "Reusable ModalShell with ESC + outside-click + body scroll lock.",
+      "Cleanup: removed App.tsx.BROKEN.bak and unused App.css.",
+    ],
+  },
+  {
     version: "0.7.0",
     deployedAtIso: "AUTO",
     notes: [
