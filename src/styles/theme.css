@@ -1,0 +1,48 @@
+/* Theme tokens. Light is default. [data-theme="dark"] override applied to <html>. */
+
+:root {
+  --bg: #f3f4f6;
+  --bg-elevated: #ffffff;
+  --fg: #000000;
+  --fg-muted: #9ca3af;
+  --border: #000000;
+  --border-soft: rgba(0, 0, 0, 0.12);
+  --grid-border: #000000;
+  --tile-r: #ee1c25;
+  --tile-g: #00b04f;
+  --tile-b: #1d29ea;
+  --button-fill: #ffffff;
+  --button-fg: #000000;
+  --button-active-bg: #000000;
+  --button-active-fg: #ffffff;
+  --modal-backdrop: rgba(0, 0, 0, 0.55);
+  --modal-surface: #ffffff;
+  --modal-border: rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="dark"] {
+  --bg: #0a0a0a;
+  --bg-elevated: #161616;
+  --fg: #ffffff;
+  --fg-muted: #6b7280;
+  --border: #ffffff;
+  --border-soft: rgba(255, 255, 255, 0.18);
+  --grid-border: #ffffff;
+  --tile-r: #ee1c25;
+  --tile-g: #00b04f;
+  --tile-b: #1d29ea;
+  --button-fill: #161616;
+  --button-fg: #ffffff;
+  --button-active-bg: #ffffff;
+  --button-active-fg: #000000;
+  --modal-backdrop: rgba(0, 0, 0, 0.75);
+  --modal-surface: #161616;
+  --modal-border: rgba(255, 255, 255, 0.16);
+}
+
+html,
+body,
+#root {
+  background: var(--bg);
+  color: var(--fg);
+}

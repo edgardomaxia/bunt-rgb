@@ -1,0 +1,31 @@
+import { SIZE } from "../engine/engine";
+import type { Color } from "../engine/types";
+
+export type DailyApiResponse = {
+  ok: boolean;
+  dailyId: string;
+  par: number;
+  grid: Color[];
+};
+
+export type DailyFetchResult =
+  | { ok: true; dailyId: string; par: number; grid: Color[] }
+  | { ok: false; reason: string };
+
+export async function fetchDaily(): Promise<DailyFetchResult> {
+  try {
+    const res = await fetch("/api/daily", { cache: "no-store" });
+    const data = (await res.json()) as Partial<DailyApiResponse>;
+    if (!data?.ok) return { ok: false, reason: "api not ok" };
+
+    const dailyId = String(data.dailyId ?? "");
+    const par = Number(data.par) || 0;
+    const grid = (data.grid as Color[] | undefined)?.slice?.();
+    if (!grid || grid.length !== SIZE * SIZE) {
+      return { ok: false, reason: "grid invalid" };
+    }
+    return { ok: true, dailyId, par, grid };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "network error" };
+  }
+}
