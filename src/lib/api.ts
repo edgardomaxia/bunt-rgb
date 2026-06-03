@@ -29,3 +29,19 @@ export async function fetchDaily(): Promise<DailyFetchResult> {
     return { ok: false, reason: e instanceof Error ? e.message : "network error" };
   }
 }
+
+export type PastScramble = {
+  dailyId: string;
+  number: number;
+  par: number;
+  grid: Color[];
+};
+
+export async function fetchPastScrambles(limit = 30): Promise<PastScramble[]> {
+  const res = await fetch(`/api/past-scrambles?limit=${limit}`, { cache: "no-store" });
+  const data = (await res.json()) as { ok?: boolean; items?: PastScramble[] };
+  if (!data?.ok || !Array.isArray(data.items)) return [];
+  return data.items.filter(
+    (it) => Array.isArray(it.grid) && it.grid.length === SIZE * SIZE
+  );
+}

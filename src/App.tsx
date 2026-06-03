@@ -280,6 +280,22 @@ function AppInner() {
     setIsShareOpen(true);
   }, [puzzleKind]);
 
+  // Load a specific scramble (past daily / shared) as a playable practice run.
+  const loadScramble = useCallback(
+    (scramble: Color[]) => {
+      const sol = minParSolutionToAnySolved(scramble);
+      setPuzzleKind("practice");
+      setActiveScreen("practice");
+      setPar(sol.par);
+      setInitialGrid(scramble.slice());
+      setGrid(scramble.slice());
+      setClicks(0);
+      resetTimer();
+      savedThisRunRef.current = false;
+    },
+    [resetTimer]
+  );
+
   const onReset = useCallback(() => {
     setGrid(initialGrid.slice());
     setClicks(0);
@@ -470,7 +486,7 @@ function AppInner() {
       <FeedbackModal open={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
       <DonateModal open={isDonateOpen} onClose={() => setIsDonateOpen(false)} />
       <HelpModal open={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-      <PastScramblesModal open={isPastOpen} onClose={() => setIsPastOpen(false)} />
+      <PastScramblesModal open={isPastOpen} onClose={() => setIsPastOpen(false)} onPlay={loadScramble} />
       <GlobalOptModal
         open={isGlobalOptOpen}
         initialNickname={nickname}
