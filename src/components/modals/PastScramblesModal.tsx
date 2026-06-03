@@ -6,7 +6,7 @@ import type { Color } from "../../engine/types";
 type Props = {
   open: boolean;
   onClose: () => void;
-  onPlay: (grid: Color[]) => void;
+  onPlay: (grid: Color[], par: number) => void;
 };
 
 type Status = "idle" | "loading" | "ready" | "error";
@@ -81,7 +81,7 @@ export function PastScramblesModal({ open, onClose, onPlay }: Props) {
                 type="button"
                 style={playBtn}
                 onClick={() => {
-                  onPlay(it.grid);
+                  onPlay(it.grid, it.par);
                   onClose();
                 }}
               >

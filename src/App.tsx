@@ -281,12 +281,17 @@ function AppInner() {
   }, [puzzleKind]);
 
   // Load a specific scramble (past daily / shared) as a playable practice run.
+  // Use the stored par when known (keeps the list and the loaded puzzle in sync,
+  // and matches how the live daily serves its stored par); recompute otherwise.
   const loadScramble = useCallback(
-    (scramble: Color[]) => {
-      const sol = minParSolutionToAnySolved(scramble);
+    (scramble: Color[], parOverride?: number) => {
+      const p =
+        typeof parOverride === "number" && parOverride > 0
+          ? parOverride
+          : minParSolutionToAnySolved(scramble).par;
       setPuzzleKind("practice");
       setActiveScreen("practice");
-      setPar(sol.par);
+      setPar(p);
       setInitialGrid(scramble.slice());
       setGrid(scramble.slice());
       setClicks(0);
@@ -486,7 +491,7 @@ function AppInner() {
       <FeedbackModal open={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
       <DonateModal open={isDonateOpen} onClose={() => setIsDonateOpen(false)} />
       <HelpModal open={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
-      <PastScramblesModal open={isPastOpen} onClose={() => setIsPastOpen(false)} onPlay={loadScramble} />
+      <PastScramblesModal open={isPastOpen} onClose={() => setIsPastOpen(false)} onPlay={(grid, par) => loadScramble(grid, par)} />
       <GlobalOptModal
         open={isGlobalOptOpen}
         initialNickname={nickname}
