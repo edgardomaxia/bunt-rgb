@@ -18,6 +18,7 @@ import { DonateModal } from "./components/modals/DonateModal";
 import { HelpModal } from "./components/modals/HelpModal";
 import { PastScramblesModal } from "./components/modals/PastScramblesModal";
 import { GlobalOptModal } from "./components/modals/GlobalOptModal";
+import { CustomComplexityModal } from "./components/modals/CustomComplexityModal";
 
 import { DailyScreen } from "./screens/DailyScreen";
 import { PracticeScreen } from "./screens/PracticeScreen";
@@ -42,6 +43,9 @@ import {
 } from "./lib/storage";
 import { clamp } from "./lib/format";
 import { fetchDaily } from "./lib/api";
+import { decodeGrid } from "./meta/colorCodec";
+import { buildShareText } from "./lib/share";
+import { track, trackScreen } from "./lib/analytics";
 import type { Difficulty } from "./components/game/DifficultyButtons";
 
 const DIFFICULTY_TO_PAR: Record<Difficulty, number> = {
@@ -60,26 +64,51 @@ function AppInner() {
   const { resolved, toggle, pref: themePref, setThemePref } = useTheme();
 
   const initialRun = useMemo(() => (typeof window === "undefined" ? null : loadRunState()), []);
+
+  // Shared practice scramble carried in the URL hash (#g=<grid code>): fully
+  // replayable challenge with no backend. Takes precedence over the daily boot.
+  const sharedScramble = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const m = window.location.hash.match(/#g=(.+)$/);
+    if (!m) return null;
+    try {
+      return decodeGrid(decodeURIComponent(m[1]));
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // PAR of the shared scramble, computed once (used to seed the practice run).
+  const sharedPar = useMemo(
+    () => (sharedScramble ? minParSolutionToAnySolved(sharedScramble).par : 0),
+    [sharedScramble]
+  );
+
   const bootstrap = useMemo(() => {
     if (typeof window === "undefined") return null;
-    if (initialRun) return null;
+    if (initialRun || sharedScramble) return null;
     return generateRandomRealPar();
-  }, [initialRun]);
+  }, [initialRun, sharedScramble]);
 
-  const [activeScreen, setActiveScreen] = useState<ScreenId>("daily");
+  const [activeScreen, setActiveScreen] = useState<ScreenId>(() =>
+    sharedScramble ? "practice" : "daily"
+  );
 
   const [puzzleKind, setPuzzleKind] = useState<GameKind>(() =>
-    (initialRun?.puzzleKind as GameKind | undefined) ?? "daily"
+    sharedScramble ? "practice" : ((initialRun?.puzzleKind as GameKind | undefined) ?? "daily")
   );
   const [par, setPar] = useState<number>(() => {
+    if (sharedScramble) return sharedPar;
     if (initialRun) return initialRun.par;
     return bootstrap?.par ?? 0;
   });
   const [grid, setGrid] = useState<Color[]>(() => {
+    if (sharedScramble) return sharedScramble.slice();
     if (initialRun) return initialRun.grid;
     return bootstrap?.grid ?? generateRandomRealPar().grid;
   });
   const [initialGrid, setInitialGrid] = useState<Color[]>(() => {
+    if (sharedScramble) return sharedScramble.slice();
     if (initialRun) return (initialRun.initialGrid ?? initialRun.grid) as Color[];
     return (bootstrap?.grid ?? generateRandomRealPar().grid).slice();
   });
@@ -100,6 +129,7 @@ function AppInner() {
   const [isPastOpen, setIsPastOpen] = useState(false);
   const [isDonateOpen, setIsDonateOpen] = useState(false);
   const [isGlobalOptOpen, setIsGlobalOptOpen] = useState(false);
+  const [isCustomOpen, setIsCustomOpen] = useState(false);
 
   const [globalOpt, setGlobalOpt] = useState<"yes" | "no" | null>(() =>
     typeof window === "undefined" ? null : loadGlobalOpt()
@@ -184,8 +214,14 @@ function AppInner() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (initialRun) return;
+    if (sharedScramble) return;
     void loadDaily();
-  }, [initialRun, loadDaily]);
+  }, [initialRun, loadDaily, sharedScramble]);
+
+  // Analytics: screen views (powers DAU + funnels)
+  useEffect(() => {
+    trackScreen(activeScreen);
+  }, [activeScreen]);
 
   // Persist run state only while playing the Daily
   useEffect(() => {
@@ -204,8 +240,18 @@ function AppInner() {
     if (savedThisRunRef.current) return;
     savedThisRunRef.current = true;
 
+    const solvedKind = activeScreen === "practice" ? "practice" : "daily";
+    track("puzzle_solved", {
+      kind: solvedKind,
+      par,
+      clicks,
+      time_ms: Math.round(elapsedMs),
+      efficiency: efficiencyScore,
+      daily_num: solvedKind === "daily" ? dailyNum : null,
+    });
+
     setLastSolvedRun({
-      kind: activeScreen === "practice" ? "practice" : "daily",
+      kind: solvedKind,
       par,
       clicks,
       timeMs: Math.round(elapsedMs),
@@ -216,17 +262,23 @@ function AppInner() {
     if (activeScreen === "daily" && puzzleKind === "daily" && !globalOpt) {
       setIsGlobalOptOpen(true);
     }
-  }, [isSolved, activeScreen, puzzleKind, par, clicks, elapsedMs, efficiencyScore, stopTimer, globalOpt]);
+  }, [isSolved, activeScreen, puzzleKind, par, clicks, elapsedMs, efficiencyScore, stopTimer, globalOpt, dailyNum]);
 
   const onTileClick = useCallback(
     (index: number) => {
       if (isSolved) return;
+      if (clicks === 0) track("puzzle_started", { kind: puzzleKind });
       startTimer();
       setGrid((prev) => applyMove(prev, index));
       setClicks((c) => c + 1);
     },
-    [isSolved, startTimer]
+    [isSolved, startTimer, clicks, puzzleKind]
   );
+
+  const onShare = useCallback(() => {
+    track("share_clicked", { kind: puzzleKind });
+    setIsShareOpen(true);
+  }, [puzzleKind]);
 
   const onReset = useCallback(() => {
     setGrid(initialGrid.slice());
@@ -306,6 +358,19 @@ function AppInner() {
     setDifficulty(pickDifficultyFromPar(par));
   }, [puzzleKind, par]);
 
+  const shareText = useMemo(
+    () =>
+      buildShareText({
+        kind: puzzleKind === "practice" ? "practice" : "daily",
+        dailyNum,
+        par,
+        clicks,
+        timeMs: Math.round(elapsedMs),
+        scramble: initialGrid,
+      }),
+    [puzzleKind, dailyNum, par, clicks, elapsedMs, initialGrid]
+  );
+
   let screenNode: React.ReactNode = null;
   if (activeScreen === "daily") {
     screenNode = (
@@ -325,7 +390,7 @@ function AppInner() {
         onReset={onReset}
         onHint={() => setIsHelpOpen(true)}
         onPastScrambles={() => setIsPastOpen(true)}
-        onShare={() => setIsShareOpen(true)}
+        onShare={onShare}
       />
     );
   } else if (activeScreen === "practice") {
@@ -341,10 +406,12 @@ function AppInner() {
         isSolved={isSolved && puzzleKind === "practice"}
         difficulty={difficulty}
         onDifficultyChange={onDifficultyChange}
+        onCustomComplexity={() => setIsCustomOpen(true)}
         onTileClick={onTileClick}
         onReset={onReset}
         onHint={() => setIsHelpOpen(true)}
         onPastScrambles={() => setIsPastOpen(true)}
+        onShare={onShare}
       />
     );
   } else if (activeScreen === "profile") {
@@ -391,7 +458,15 @@ function AppInner() {
       <BottomNav active={activeScreen} onChange={setActiveScreen} />
 
       <VersionModal open={isVersionOpen} onClose={() => setIsVersionOpen(false)} />
-      <ShareModal open={isShareOpen} onClose={() => setIsShareOpen(false)} />
+      <ShareModal open={isShareOpen} onClose={() => setIsShareOpen(false)} shareText={shareText} />
+      {isCustomOpen ? (
+        <CustomComplexityModal
+          open
+          initialPar={par}
+          onClose={() => setIsCustomOpen(false)}
+          onGenerate={(p) => generatePracticePuzzle(p)}
+        />
+      ) : null}
       <FeedbackModal open={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
       <DonateModal open={isDonateOpen} onClose={() => setIsDonateOpen(false)} />
       <HelpModal open={isHelpOpen} onClose={() => setIsHelpOpen(false)} />

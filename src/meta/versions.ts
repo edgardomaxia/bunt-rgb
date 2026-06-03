@@ -6,6 +6,19 @@ export type VersionMeta = {
 
 export const VERSION_HISTORY: VersionMeta[] = [
   {
+    version: "0.9.0",
+    deployedAtIso: "AUTO",
+    notes: [
+      "Share your result: Wordle-style emoji grid + stats, one tap to copy or share.",
+      "Practice scrambles are now replayable — share a link and a friend plays the exact same puzzle.",
+      "Custom Complexity: pick any target PAR (1–20) for a practice scramble.",
+      "Fixed: PAR 1 results now record correctly on the leaderboard.",
+      "Fixed: the leaderboard no longer stores duplicate entries for the same run.",
+      "Fixed: the side buttons are no longer clipped on small screens.",
+      "Privacy-first analytics (no tracking cookies, no IP collection) to learn what to improve.",
+    ],
+  },
+  {
     version: "0.8.0",
     deployedAtIso: "AUTO",
     notes: [

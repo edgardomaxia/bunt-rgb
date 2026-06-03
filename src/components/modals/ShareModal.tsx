@@ -3,9 +3,8 @@ import { ModalShell } from "./ModalShell";
 type Props = {
   open: boolean;
   onClose: () => void;
+  shareText: string;
 };
-
-const SHARE_TEXT = "Can you solve this?\nhttps://bunt-rgb.com/demo/";
 
 const btn: React.CSSProperties = {
   padding: "10px 14px",
@@ -16,10 +15,18 @@ const btn: React.CSSProperties = {
   fontWeight: 700,
 };
 
-export function ShareModal({ open, onClose }: Props) {
+export function ShareModal({ open, onClose, shareText }: Props) {
   function copy() {
-    navigator.clipboard.writeText(SHARE_TEXT);
+    navigator.clipboard.writeText(shareText);
     onClose();
+  }
+
+  function nativeShare() {
+    if (navigator.share) {
+      navigator.share({ text: shareText }).catch(() => {});
+      return;
+    }
+    copy();
   }
 
   function openExternal(url: string) {
@@ -29,34 +36,41 @@ export function ShareModal({ open, onClose }: Props) {
   function mail() {
     window.location.href = `mailto:?subject=${encodeURIComponent(
       "BUNT RGB challenge"
-    )}&body=${encodeURIComponent(SHARE_TEXT)}`;
+    )}&body=${encodeURIComponent(shareText)}`;
   }
+
+  const canNativeShare = typeof navigator !== "undefined" && !!navigator.share;
 
   return (
     <ModalShell open={open} onClose={onClose} title="Share">
-      <div style={{ opacity: 0.75, fontSize: 13, whiteSpace: "pre-wrap" }}>{SHARE_TEXT}</div>
+      <div style={{ opacity: 0.75, fontSize: 13, whiteSpace: "pre-wrap" }}>{shareText}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
+        {canNativeShare ? (
+          <button type="button" style={btn} onClick={nativeShare}>
+            Share…
+          </button>
+        ) : null}
         <button type="button" style={btn} onClick={copy}>
           Copy
         </button>
         <button
           type="button"
           style={btn}
-          onClick={() => openExternal(`https://wa.me/?text=${encodeURIComponent(SHARE_TEXT)}`)}
+          onClick={() => openExternal(`https://wa.me/?text=${encodeURIComponent(shareText)}`)}
         >
           WhatsApp
         </button>
         <button
           type="button"
           style={btn}
-          onClick={() => openExternal(`https://t.me/share/url?text=${encodeURIComponent(SHARE_TEXT)}`)}
+          onClick={() => openExternal(`https://t.me/share/url?url=&text=${encodeURIComponent(shareText)}`)}
         >
           Telegram
         </button>
         <button
           type="button"
           style={btn}
-          onClick={() => openExternal(`https://twitter.com/intent/tweet?text=${encodeURIComponent(SHARE_TEXT)}`)}
+          onClick={() => openExternal(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`)}
         >
           X
         </button>

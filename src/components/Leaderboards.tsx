@@ -1,5 +1,5 @@
 // src/components/Leaderboards.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 export type LastSolvedRun = {
   kind: "daily" | "practice";
@@ -124,6 +124,10 @@ export default function Leaderboards(props: {
     "idle"
   );
 
+  // Salva ogni run una volta sola: l'effect può ri-eseguire su re-render
+  // (StrictMode, prop instabili) — usiamo l'iso come chiave idempotente.
+  const savedIsoRef = useRef<string | null>(null);
+
   // NEW: lock view (e.g. force Local while Global is empty / not deployed)
   useEffect(() => {
     if (!lockView) return;
@@ -135,9 +139,14 @@ useEffect(() => {
   if (!lastSolvedRun) return;
   if (typeof window === "undefined") return;
 
-  // Guard: evita salvataggi “fantasma” (es. grid già solved al boot / restore)
+  // Guard: evita salvataggi “fantasma” (es. grid già solved al boot / restore).
+  // clicks<=0 basta: un solve reale ha sempre >=1 click. NON filtrare su timeMs,
+  // altrimenti i solve istantanei (PAR 1, un click) verrebbero scartati.
   if (lastSolvedRun.clicks <= 0) return;
-  if (lastSolvedRun.timeMs <= 0) return;
+
+  // Idempotenza: non risalvare la stessa run su re-render.
+  if (savedIsoRef.current === lastSolvedRun.iso) return;
+  savedIsoRef.current = lastSolvedRun.iso;
 
     // If just solved a practice run, auto-select that PAR everywhere
     if (lastSolvedRun.kind === "practice") {
@@ -152,12 +161,15 @@ useEffect(() => {
       };
 
       if (lastSolvedRun.kind === "daily") {
+        // Dedup su iso: sopravvive a remount/StrictMode (il ref no).
+        if (next.daily.some((e) => e.iso === lastSolvedRun.iso)) return prev;
         next.daily.push(lastSolvedRun);
         next.daily.sort(sortLocal);
         next.daily = next.daily.slice(0, LEADERBOARD_SIZE);
       } else {
         const p = String(clamp(Math.floor(lastSolvedRun.par), 1, 20));
         const arr = Array.isArray(next.practiceByPar[p]) ? next.practiceByPar[p].slice() : [];
+        if (arr.some((e) => e.iso === lastSolvedRun.iso)) return prev;
         arr.push(lastSolvedRun);
         arr.sort(sortLocal);
         next.practiceByPar[p] = arr.slice(0, LEADERBOARD_SIZE);

@@ -26,6 +26,7 @@ type Props = {
   onReset: () => void;
   onHint: () => void;
   onPastScrambles: () => void;
+  onShare: () => void;
 };
 
 export function PracticeScreen(props: Props) {
@@ -37,10 +38,11 @@ export function PracticeScreen(props: Props) {
       <div
         style={{
           display: "flex",
-          gap: 16,
+          gap: 10,
           alignItems: "center",
           justifyContent: "center",
           width: "100%",
+          maxWidth: "100%",
           marginTop: 6,
         }}
       >
@@ -58,6 +60,25 @@ export function PracticeScreen(props: Props) {
           <ResetButton onClick={props.onReset} />
         </div>
       </div>
+
+      {props.isSolved ? (
+        <button
+          type="button"
+          onClick={props.onShare}
+          style={{
+            background: "var(--button-active-bg)",
+            color: "var(--button-active-fg)",
+            border: "none",
+            borderRadius: 999,
+            padding: "14px 32px",
+            fontSize: 16,
+            fontWeight: 900,
+            letterSpacing: 1,
+          }}
+        >
+          SHARE
+        </button>
+      ) : null}
     </div>
   );
 }

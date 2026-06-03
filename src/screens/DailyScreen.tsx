@@ -37,10 +37,11 @@ export function DailyScreen(props: Props) {
       <div
         style={{
           display: "flex",
-          gap: 16,
+          gap: 10,
           alignItems: "center",
           justifyContent: "center",
           width: "100%",
+          maxWidth: "100%",
           marginTop: 6,
         }}
       >
